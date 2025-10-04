@@ -1,0 +1,7 @@
+FROM frappe-app-ready
+
+# تثبيت Redis
+RUN apt-get update && apt-get install -y redis-server
+
+# تشغيل Redis و Bench معاً
+CMD bash -c "redis-server --daemonize yes && cd /home/frappe/production && bench start"

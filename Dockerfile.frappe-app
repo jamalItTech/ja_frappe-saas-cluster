@@ -1,0 +1,32 @@
+# Dockerfile.frappe-app
+FROM frappe/bench:latest
+
+# تثبيت المتطلبات الإضافية
+RUN apt-get update && apt-get install -y \
+    redis-server \
+    curl \
+    wget \
+    vim \
+    htop \
+    && rm -rf /var/lib/apt/lists/*
+
+# إنشاء هيكل المجلدات
+RUN mkdir -p /home/frappe/{backups,logs,scripts,monitoring}
+
+# نسخ السكريبتات
+COPY scripts/ /home/frappe/scripts/
+RUN chmod +x /home/frappe/scripts/*.sh
+
+# تهيئة Bench
+WORKDIR /home/frappe
+RUN bench init --skip-redis-config-generation --skip-assets production
+
+WORKDIR /home/frappe/production
+
+# إعدادات Redis
+RUN bench set-config -g redis_cache "redis://redis-server:6379"
+RUN bench set-config -g redis_queue "redis://redis-server:6379"
+RUN bench set-config -g redis_socketio "redis://redis-server:6379"
+
+# الأمر الافتراضي
+CMD ["bash", "-c", "redis-server --daemonize yes && bench start"]
