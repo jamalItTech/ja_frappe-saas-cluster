@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>منصتنا - نظام إدارة الأعمال المتكامل</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 🌐 الهيدر -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">🚀 منصتنا</a>
+        </div>
+    </nav>
+
+    <!-- 🎯 قسم البطل -->
+    <section class="hero-section text-center">
+        <div class="container">
+            <h1 class="display-4 fw-bold">نظام إدارة أعمالك بالكامل في مكان واحد</h1>
+            <p class="lead mb-4">جرب منصتنا مجاناً لمدة 14 يوم. لا حاجة لبطاقة ائتمان.</p>
+            <div class="d-flex gap-3 justify-content-center flex-wrap">
+                <button class="btn btn-light btn-lg" onclick="startTrial()">
+                    🚀 ابدأ التجربة المجانية
+                </button>
+                <button class="btn btn-outline-light btn-lg" onclick="bookDemo()">
+                    📅 احجز عرض تجريبي
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- 📱 قسم الميزات -->
+    <section class="py-5 bg-light">
+        <div class="container">
+            <h2 class="text-center mb-5">✨ لماذا تختار منصتنا؟</h2>
+            <div class="row text-center">
+                <div class="col-md-4 mb-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3 class="text-primary">📊 ERP متكامل</h3>
+                            <p>إدارة الحسابات والمخزون والمبيعات والمشتريات في نظام واحد</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3 class="text-success">👥 إدارة الموارد</h3>
+                            <p>نظام متكامل للموارد البشرية والرواتب والحضور والانصراف</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3 class="text-info">🤝 علاقات العملاء</h3>
+                            <p>إدارة علاقات العملاء والمبيعات والتسويق في مكان واحد</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 📊 قسم الإحصائيات -->
+    <section class="py-5 bg-primary text-white">
+        <div class="container">
+            <h2 class="text-center mb-5">📈 إحصائيات النجاح</h2>
+            <div class="row text-center" id="statsSection">
+                <div class="col-md-4 mb-4">
+                    <div class="statistic-card">
+                        <h3 class="display-4 fw-bold" id="trialUsersCount">0</h3>
+                        <p class="h5">حساب تجريبي نشط</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="statistic-card">
+                        <h3 class="display-4 fw-bold" id="sitesCreatedCount">0</h3>
+                        <p class="h5">موقع تم إنشاؤه</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="statistic-card">
+                        <h3 class="display-4 fw-bold" id="demoRequestsCount">0</h3>
+                        <p class="h5">طلب عرض تجريبي</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="js/main.js"></script>
+    <script>
+        // تحميل الإحصائيات من الـ API
+        async function loadStatistics() {
+            try {
+                const response = await fetch('http://localhost:5000/api/statistics');
+
+                if (response.ok) {
+                    const stats = await response.json();
+                    if (stats.success) {
+                        document.getElementById('trialUsersCount').textContent = stats.data.trial_users || 0;
+                        document.getElementById('sitesCreatedCount').textContent = stats.data.sites_created || 0;
+                        document.getElementById('demoRequestsCount').textContent = stats.data.demo_requests || 0;
+                    }
+                }
+            } catch (error) {
+                console.log('Could not load statistics:', error);
+                // في حالة فشل الاتصال، نعرض الأرقام كإشارة لـ "جاري التحديث"
+                document.getElementById('trialUsersCount').textContent = '+';
+                document.getElementById('sitesCreatedCount').textContent = '+';
+                document.getElementById('demoRequestsCount').textContent = '+';
+            }
+        }
+
+        // تحميل الإحصائيات عند فتح الصفحة
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStatistics();
+        });
+    </script>
+</body>
+</html>

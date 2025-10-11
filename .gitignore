@@ -1,0 +1,13 @@
+# Environment files
+.env
+
+# Docker & local volumes
+volumes/
+*.pem
+
+# Temporary and build files
+*.log
+*.pid
+
+# Other stuff you don't want
+*.tmp

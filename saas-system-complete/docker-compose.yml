@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: nginx:alpine
+    container_name: saas-frontend-v1
+    networks:
+      frappe-cluster_frappe-light-net:
+        ipv4_address: 172.25.0.200  # استخدام IP في النطاق الصحيح
+    ports:
+      - "8082:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/frontend.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/trial-sites.conf:/etc/nginx/conf.d/trial-sites.conf
+      - nginx_cache:/var/cache/nginx
+      - nginx_logs:/var/log/nginx
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build: ./backend
+    container_name: saas-backend-v1
+    networks:
+      frappe-cluster_frappe-light-net:
+        ipv4_address: 172.25.0.201
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DB_HOST=172.25.0.100  # قاعدة بيانات SaaS الموجودة
+      - DB_USER=saas_user
+      - DB_PASSWORD=saas_db_pass_2025
+      - DB_NAME=saas_trials_light
+      - SECRET_KEY=your-secret-key-change-in-production
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - FRAPPE_DB_HOST=172.25.0.10  # اتصال بفرابي
+      - FRAPPE_DB_PORT=4306
+      - FRAPPE_DB_USER=frappe_user
+      - FRAPPE_DB_PASSWORD=frappe_db_pass_2025
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./backend:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  frappe-cluster_frappe-light-net:
+    external: true
+
+volumes:
+  nginx_cache:
+  nginx_logs:

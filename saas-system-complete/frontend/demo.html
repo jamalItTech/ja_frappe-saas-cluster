@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>عرض تجريبي - منصتنا</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">🚀 منصتنا</a>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card shadow-lg border-0">
+                    <div class="card-body text-center p-5">
+                        <div class="text-success mb-4" style="font-size: 5rem;">🎉</div>
+                        <h1 class="display-5 fw-bold text-primary mb-3">تم إنشاء حسابك التجريبي!</h1>
+                        
+                        <div class="alert alert-success mb-4">
+                            <h5>🔗 رابط النظام التجريبي:</h5>
+                            <p class="h4 mt-2" id="demoUrl"></p>
+                        </div>
+
+                        <div class="row text-start mb-4">
+                            <div class="col-md-6">
+                                <h6>📋 معلومات الحساب:</h6>
+                                <ul class="list-unstyled">
+                                    <li><strong>اسم الشركة:</strong> <span id="companyInfo"></span></li>
+                                    <li><strong>Subdomain:</strong> <span id="subdomainInfo"></span></li>
+                                    <li><strong>البريد الإلكتروني:</strong> <span id="emailInfo"></span></li>
+                                    <li><strong>التطبيقات:</strong> <span id="appsInfo"></span></li>
+                                    <li><strong>مدة التجربة:</strong> <span id="daysInfo"></span> يوم</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>🚀 الميزات المتوقعة:</h6>
+                                <ul>
+                                    <li>نظام ERP متكامل</li>
+                                    <li>إدارة الموارد البشرية</li>
+                                    <li>نظام CRM</li>
+                                    <li>منصة تعلم إلكتروني</li>
+                                    <li>موقع ويب للشركة</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <h6>💡 ملاحظة:</h6>
+                            <p class="mb-0">في النظام الحقيقي، هذا الرابط سيشغل نسخة كاملة من منصتنا مع البيانات الخاصة بشركتك. هذه نسخة تجريبية لعرض آلية العمل فقط.</p>
+                        </div>
+
+                        <div class="d-flex gap-3 justify-content-center mt-4">
+                            <button class="btn btn-primary btn-lg" onclick="goHome()">
+                                🏠 العودة للرئيسية
+                            </button>
+                            <button class="btn btn-outline-secondary btn-lg" onclick="createAnother()">
+                                ➕ إنشاء حساب آخر
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // جلب بيانات من URL
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                subdomain: params.get('subdomain'),
+                customer_id: params.get('customer_id')
+            };
+        }
+
+        // تحميل البيانات عند فتح الصفحة
+        document.addEventListener('DOMContentLoaded', function() {
+            const params = getUrlParams();
+            
+            if (params.subdomain) {
+                document.getElementById('subdomainInfo').textContent = params.subdomain;
+                document.getElementById('demoUrl').textContent = `https://${params.subdomain}.trial.com`;
+                document.getElementById('demoUrl').innerHTML = `
+                    <a href="https://${params.subdomain}.trial.com" target="_blank" class="text-decoration-none">
+                        https://${params.subdomain}.trial.com
+                    </a>
+                `;
+                
+                // محاكاة البيانات (في الواقع ستأتي من API)
+                document.getElementById('companyInfo').textContent = 'شركة تجريبية';
+                document.getElementById('emailInfo').textContent = 'info@company.com';
+                document.getElementById('appsInfo').textContent = 'ERPNext, CRM, HRMS';
+                document.getElementById('daysInfo').textContent = '14';
+                
+                // جلب البيانات الحقيقية من API إذا كان customer_id موجود
+                if (params.customer_id) {
+                    fetchCustomerData(params.customer_id);
+                }
+            }
+        });
+
+        // جلب بيانات العميل من API
+        async function fetchCustomerData(customerId) {
+            try {
+                const response = await fetch(`/api/customers`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    const customer = result.customers.find(c => c.id == customerId);
+                    if (customer) {
+                        document.getElementById('companyInfo').textContent = customer.company_name;
+                        document.getElementById('emailInfo').textContent = customer.email;
+                        
+                        // عرض التطبيقات المختارة
+                        const selectedApps = JSON.parse(customer.selected_apps || '[]');
+                        const appNames = selectedApps.map(appId => {
+                            const apps = {
+                                'erpnext': 'ERPNext',
+                                'hrms': 'HRMS', 
+                                'crm': 'CRM',
+                                'lms': 'LMS',
+                                'website': 'Website'
+                            };
+                            return apps[appId] || appId;
+                        }).join(', ');
+                        
+                        document.getElementById('appsInfo').textContent = appNames || 'جميع التطبيقات';
+                        document.getElementById('daysInfo').textContent = customer.trial_days;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching customer data:', error);
+            }
+        }
+
+        function goHome() {
+            window.location.href = 'index.html';
+        }
+
+        function createAnother() {
+            // تنظيف localStorage والانتقال للبداية
+            localStorage.removeItem('selectedApps');
+            localStorage.removeItem('trialDays');
+            window.location.href = 'select-apps.html';
+        }
+    </script>
+</body>
+</html>

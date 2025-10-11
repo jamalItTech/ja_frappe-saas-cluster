@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تم الإنشاء بنجاح - منصتنا</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">🚀 منصتنا</a>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card shadow-lg border-0">
+                    <div class="card-body p-5 text-center">
+                        <!-- أيقونة النجاح -->
+                        <div class="success-animation mb-4">
+                            <span style="font-size: 5rem;">🎉</span>
+                        </div>
+                        
+                        <h1 class="display-5 fw-bold text-success mb-3">تم إنشاء حسابك بنجاح!</h1>
+                        <p class="lead text-muted mb-4">حسابك التجريبي جاهز الآن للاستخدام</p>
+                        
+                        <!-- بيانات الحساب -->
+                        <div id="accountDetails" class="credentials-box p-4 rounded mb-5">
+                            <!-- سيتم تعبئة البيانات ديناميكياً -->
+                        </div>
+
+                        <!-- إشعار البريد -->
+                        <div class="alert alert-info mb-5">
+                            <h5 class="alert-heading">📧 تحقق من بريدك الإلكتروني</h5>
+                            <p class="mb-0">تم إرسال بيانات الدخول الكاملة إلى بريدك الإلكتروني</p>
+                        </div>
+
+                        <!-- أزرار الإجراءات -->
+                        <div class="d-flex gap-3 justify-content-center flex-wrap">
+                            <a href="index.html" class="btn btn-outline-primary btn-lg">
+                                ← العودة للرئيسية
+                            </a>
+                            <button onclick="goToSystem()" class="btn btn-primary btn-lg" id="systemButton">
+                                🚀 الانتقال للنظام
+                            </button>
+                            <button onclick="createAnotherAccount()" class="btn btn-success btn-lg">
+                                ➕ إنشاء حساب آخر
+                            </button>
+                        </div>
+
+                        <!-- نصائح سريعة -->
+                        <div class="mt-5 pt-4 border-top">
+                            <h6 class="fw-bold mb-3">💡 نصائح للبدء:</h6>
+                            <div class="row text-start">
+                                <div class="col-md-6 mb-2">
+                                    <span class="text-primary">•</span> استكشف جميع الميزات المتاحة
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <span class="text-primary">•</span> قم بإضافة بياناتك الأولية
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <span class="text-primary">•</span> جرب التطبيقات المختارة
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <span class="text-primary">•</span> تواصل مع الدعم لأي استفسار
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // تحميل بيانات النجاح
+        function loadSuccessData() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const siteUrl = urlParams.get('site_url');
+            
+            const accountDetails = document.getElementById('accountDetails');
+            const systemButton = document.getElementById('systemButton');
+            
+            if (siteUrl && siteUrl !== 'undefined') {
+                accountDetails.innerHTML = `
+                    <h5 class="fw-bold mb-3">🔑 بيانات الدخول:</h5>
+                    <div class="row text-start">
+                        <div class="col-md-6 mb-2">
+                            <strong>🔗 رابط النظام:</strong><br>
+                            <a href="${siteUrl}" target="_blank" class="text-decoration-none">${siteUrl}</a>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <strong>⏰ مدة التجربة:</strong><br>
+                            <span class="text-success">14 يوم</span>
+                        </div>
+                    </div>
+                    <div class="mt-3 p-3 bg-white rounded">
+                        <small class="text-muted">
+                            📝 <strong>ملاحظة:</strong> تم إرسال كلمة المرور إلى بريدك الإلكتروني
+                        </small>
+                    </div>
+                `;
+                
+                systemButton.onclick = () => window.open(siteUrl, '_blank');
+            } else {
+                accountDetails.innerHTML = `
+                    <div class="alert alert-warning">
+                        <h6>⏳ جاري إنشاء حسابك</h6>
+                        <p class="mb-0">سيصلك بريد التأكيف مع بيانات الدخول خلال دقائق قليلة</p>
+                    </div>
+                `;
+                systemButton.style.display = 'none';
+            }
+        }
+
+        function goToSystem() {
+            // يتم تعيينها ديناميكياً
+        }
+
+        function createAnotherAccount() {
+            // تنظيف localStorage والانتقال للبداية
+            localStorage.clear();
+            window.location.href = 'index.html';
+        }
+
+        // تحميل البيانات عند فتح الصفحة
+        document.addEventListener('DOMContentLoaded', loadSuccessData);
+    </script>
+</body>
+</html>

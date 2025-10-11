@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إنشاء حساب - منصتنا</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">🚀 منصتنا</a>
+            <span class="navbar-text">
+                خطوة ٢ من ٢
+            </span>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card shadow-lg border-0">
+                    <div class="card-body p-5">
+                        <div class="text-center mb-4">
+                            <h2 class="fw-bold text-primary">🚀 إنشاء حساب تجريبي</h2>
+                            <p class="text-muted">املأ بياناتك لبدء تجربتك المجانية</p>
+                        </div>
+                        
+                        <form id="signupForm" onsubmit="createTrialAccount(event)">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold">🏢 اسم الشركة *</label>
+                                    <input type="text" class="form-control form-control-lg" name="company_name" 
+                                           placeholder="أدخل اسم شركتك" required>
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold">👤 اسمك الكامل *</label>
+                                    <input type="text" class="form-control form-control-lg" name="full_name" 
+                                           placeholder="الاسم الأول والاخير" required>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold">📧 البريد الإلكتروني *</label>
+                                    <input type="email" class="form-control form-control-lg" name="email" 
+                                           placeholder="example@company.com" required>
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold">📞 رقم الهاتف</label>
+                                    <input type="tel" class="form-control form-control-lg" name="phone" 
+                                           placeholder="05XXXXXXXX">
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">🔐 كلمة المرور *</label>
+                                <input type="password" class="form-control form-control-lg" name="password" 
+                                       placeholder="كلمة مرور قوية" required minlength="6">
+                                <div class="form-text">
+                                    🔒 يجب أن تحتوي كلمة المرور على 6 أحرف على الأقل
+                                </div>
+                            </div>
+
+                            <!-- عرض التطبيقات المختارة -->
+                            <div class="alert alert-info">
+                                <h6 class="fw-bold">📋 التطبيقات المختارة:</h6>
+                                <div id="selectedAppsDisplay" class="mb-2"></div>
+                                <div class="fw-bold">⏰ مدة التجربة: <span id="trialDaysDisplay"></span> يوم</div>
+                            </div>
+
+                            <div class="form-check mb-4">
+                                <input class="form-check-input" type="checkbox" id="agreeTerms" required>
+                                <label class="form-check-label" for="agreeTerms">
+                                    أوافق على <a href="#" class="text-decoration-none">شروط الخدمة</a> 
+                                    و <a href="#" class="text-decoration-none">سياسة الخصوصية</a>
+                                </label>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-lg w-100 py-3 fw-bold">
+                                🚀 إنشاء حساب تجريبي
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- تعريف التطبيقات مباشرة في الصفحة -->
+    <script>
+        // تعريف التطبيقات المتاحة
+        const AVAILABLE_APPS = [
+            { 
+                id: 'erpnext', 
+                name: 'ERPNext', 
+                description: 'نظام تخطيط الموارد المتكامل', 
+                icon: '📊'
+            },
+            { 
+                id: 'hrms', 
+                name: 'HRMS', 
+                description: 'نظام إدارة الموارد البشرية', 
+                icon: '👥'
+            },
+            { 
+                id: 'crm', 
+                name: 'CRM', 
+                description: 'نظام إدارة علاقات العملاء', 
+                icon: '🤝'
+            },
+            { 
+                id: 'lms', 
+                name: 'LMS', 
+                description: 'نظام إدارة التعلم', 
+                icon: '🎓'
+            },
+            { 
+                id: 'website', 
+                name: 'Website', 
+                description: 'منشئ مواقع الويب', 
+                icon: '🌐'
+            }
+        ];
+
+        // إعدادات API
+        const API_BASE_URL = 'http://localhost:5000';
+
+        // وظائف المساعدة
+        function showAlert(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 1000; min-width: 300px;';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                if (alertDiv.parentElement) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
+
+        function showLoading() {
+            let overlay = document.getElementById('loadingOverlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'loadingOverlay';
+                overlay.className = 'loading-overlay';
+                overlay.innerHTML = `
+                    <div class="loading-spinner">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">جاري التحميل...</span>
+                        </div>
+                        <div class="mt-2">جاري المعالجة...</div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+            }
+            overlay.style.display = 'flex';
+        }
+
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+        }
+    </script>
+
+    <script>
+        // تحميل البيانات المحفوظة
+        function loadSavedData() {
+            const selectedApps = JSON.parse(localStorage.getItem('selectedApps') || '[]');
+            const trialDays = localStorage.getItem('trialDays') || '14';
+            
+            console.log('Selected Apps from localStorage:', selectedApps);
+            console.log('Trial Days from localStorage:', trialDays);
+            
+            const appsDisplay = document.getElementById('selectedAppsDisplay');
+            const daysDisplay = document.getElementById('trialDaysDisplay');
+            
+            // عرض التطبيقات المختارة
+            if (selectedApps && selectedApps.length > 0) {
+                console.log('Available Apps:', AVAILABLE_APPS);
+                
+                const appNames = selectedApps.map(appId => {
+                    const app = AVAILABLE_APPS.find(a => a.id === appId);
+                    console.log(`Looking for ${appId}:`, app);
+                    return app ? `<span class="badge bg-primary me-1 mb-1">${app.name}</span>` : '';
+                }).join('');
+                
+                appsDisplay.innerHTML = appNames;
+                console.log('Rendered Apps HTML:', appNames);
+            } else {
+                appsDisplay.innerHTML = '<span class="text-muted">لم يتم اختيار تطبيقات</span>';
+            }
+            
+            daysDisplay.textContent = trialDays;
+        }
+
+        // إنشاء حساب تجريبي
+        async function createTrialAccount(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const data = {
+                company_name: formData.get('company_name'),
+                full_name: formData.get('full_name'),
+                email: formData.get('email'),
+                phone: formData.get('phone'),
+                password: formData.get('password'),
+                selected_apps: JSON.parse(localStorage.getItem('selectedApps') || '[]'),
+                trial_days: parseInt(localStorage.getItem('trialDays') || '14')
+            };
+console.log('API Base URL:', API_BASE_URL);
+
+            console.log('Sending data to API:', data);
+
+            const submitBtn = event.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            
+            // تعطيل الزر وإظهار التحميل
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري إنشاء الحساب...';
+            showLoading();
+
+            try {
+                const response = await fetch(API_BASE_URL + '/api/create-trial', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                console.log(response,"responseresponse")
+
+                const result = await response.json();
+                console.log('API Response:', result);
+                
+                if (result.success) {
+                    // تنظيف localStorage
+                    localStorage.removeItem('selectedApps');
+                    localStorage.removeItem('trialDays');
+                    
+                    // إظهار رسالة النجاح
+                    showAlert(`🎉 ${result.message}`, 'success');
+                    
+                    // الانتقال لصفحة النجاح أو إظهار الرابط
+                    setTimeout(() => {
+                        if (result.site_url) {
+                            window.open(result.site_url, '_blank');
+                        }
+                    }, 2000);
+                    
+                } else {
+                    showAlert(`❌ ${result.message}`, 'danger');
+                }
+            } catch (error) {
+                console.error('Request failed:', error);
+                showAlert(`❌ حدث خطأ في الاتصال: ${error.message}`, 'danger');
+            } finally {
+                // إعادة تمكين الزر
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                hideLoading();
+            }
+        }
+
+        // تحميل البيانات عند فتح الصفحة
+        document.addEventListener('DOMContentLoaded', loadSavedData);
+    </script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختر التطبيقات - منصتنا</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">🚀 منصتنا</a>
+            <span class="navbar-text">
+                خطوة ١ من ٢
+            </span>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <div class="text-center mb-5">
+                    <h1 class="display-5 fw-bold text-primary">📦 اختر التطبيقات التي تحتاجها</h1>
+                    <p class="lead text-muted">اختر واحداً أو أكثر من التطبيقات التالية لتبدأ تجربتك</p>
+                </div>
+                
+                <div class="row" id="appsContainer">
+                    <!-- التطبيقات سيتم تحميلها ديناميكياً -->
+                </div>
+
+                <div class="row mt-5">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <label class="form-label fw-bold">⏰ مدة التجربة:</label>
+                                <select class="form-select" name="trial_days" id="trialDays">
+                                    <option value="7">7 أيام</option>
+                                    <option value="14" selected>14 يوم</option>
+                                    <option value="30">30 يوم</option>
+                                </select>
+                                <small class="text-muted">يمكنك تمديد التجربة لاحقاً</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>📋 التطبيقات المختارة:</h6>
+                                <div id="selectedAppsSummary" class="text-muted">
+                                    لم يتم اختيار أي تطبيقات بعد
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-5">
+                    <button type="button" class="btn btn-primary btn-lg px-5" onclick="proceedToSignup()">
+                        التالي ←
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-lg ms-2" onclick="goHome()">
+                        رجوع
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- تحميل ملف JavaScript الرئيسي -->
+    <script src="js/main.js"></script>
+    
+    <script>
+        // تحميل التطبيقات
+        function loadApps() {
+            const container = document.getElementById('appsContainer');
+            container.innerHTML = '';
+            
+            // التحقق من وجود المتغير
+            if (typeof AVAILABLE_APPS === 'undefined') {
+                container.innerHTML = `
+                    <div class="col-12 text-center">
+                        <div class="alert alert-warning">
+                            ❌ لم يتم تحميل التطبيقات. تأكد من تحميل ملف main.js
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            AVAILABLE_APPS.forEach(app => {
+                const appCard = `
+                    <div class="col-lg-6 mb-4">
+                        <div class="card app-card" onclick="toggleApp('${app.id}')" id="card-${app.id}">
+                            <div class="card-body">
+                                <div class="d-flex align-items-start">
+                                    <div class="me-3" style="font-size: 2rem;">${app.icon}</div>
+                                    <div class="flex-grow-1">
+                                        <h5 class="card-title mb-2">${app.name}</h5>
+                                        <p class="card-text text-muted mb-2">${app.description}</p>
+                                        <div class="features">
+                                            ${app.features.map(feature => 
+                                                `<span class="badge bg-light text-dark me-1 mb-1">${feature}</span>`
+                                            ).join('')}
+                                        </div>
+                                    </div>
+                                    <div class="form-check form-check-lg">
+                                        <input class="form-check-input" type="checkbox" name="apps" value="${app.id}" id="check-${app.id}">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += appCard;
+            });
+            
+            updateSelectedAppsSummary();
+        }
+
+        // تبديل اختيار التطبيق
+        function toggleApp(appId) {
+            const card = document.getElementById(`card-${appId}`);
+            const checkbox = document.getElementById(`check-${appId}`);
+            
+            checkbox.checked = !checkbox.checked;
+            card.classList.toggle('selected', checkbox.checked);
+            
+            updateSelectedAppsSummary();
+        }
+
+        // تحديث ملخص التطبيقات المختارة
+        function updateSelectedAppsSummary() {
+            const selectedApps = getSelectedApps();
+            const summaryDiv = document.getElementById('selectedAppsSummary');
+            
+            if (selectedApps.length === 0) {
+                summaryDiv.innerHTML = '<span class="text-muted">لم يتم اختيار أي تطبيقات بعد</span>';
+            } else {
+                const appNames = selectedApps.map(appId => {
+                    const app = AVAILABLE_APPS.find(a => a.id === appId);
+                    return app ? app.name : appId;
+                });
+                summaryDiv.innerHTML = appNames.map(name => 
+                    `<span class="badge bg-primary me-1 mb-1">${name}</span>`
+                ).join('');
+            }
+        }
+
+        // الحصول على التطبيقات المختارة
+        function getSelectedApps() {
+            return Array.from(document.querySelectorAll('input[name="apps"]:checked'))
+                .map(cb => cb.value);
+        }
+
+        // الانتقال لصفحة التسجيل
+        function proceedToSignup() {
+            const selectedApps = getSelectedApps();
+            
+            if (selectedApps.length === 0) {
+                showAlert('⚠️ يرجى اختيار تطبيق واحد على الأقل', 'warning');
+                return;
+            }
+
+            // حفظ البيانات
+            localStorage.setItem('selectedApps', JSON.stringify(selectedApps));
+            localStorage.setItem('trialDays', document.getElementById('trialDays').value);
+            
+            // الانتقال لصفحة التسجيل
+            window.location.href = 'signup.html';
+        }
+
+        // تحميل التطبيقات عند فتح الصفحة
+        document.addEventListener('DOMContentLoaded', loadApps);
+    </script>
+</body>
+</html>

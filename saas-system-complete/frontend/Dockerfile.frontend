@@ -1,0 +1,51 @@
+# SaaS Trial Frontend - Production Dockerfile
+
+# Base image
+FROM nginx:1.25-alpine
+
+# Labels for metadata
+LABEL maintainer="SaaS Trial Team"
+LABEL version="1.0"
+LABEL description="SaaS Trial System Frontend"
+
+# Install security updates and required packages
+RUN apk update && \
+    apk add --no-cache \
+        curl \
+        openssl \
+        && \
+    rm -rf /var/cache/apk/*
+
+# Create nginx user and directories
+RUN addgroup -g 1001 -S saas && \
+    adduser -S saas -u 1001
+
+# Create required directories
+RUN mkdir -p /var/cache/nginx /var/log/nginx /etc/nginx/ssl
+
+# Set permissions
+RUN chown -R saas:saas /var/cache/nginx /var/log/nginx /etc/nginx/ssl && \
+    chmod -R 755 /var/cache/nginx /var/log/nginx /etc/nginx/ssl
+
+# Copy nginx configuration templates
+COPY nginx/frontend.conf /etc/nginx/conf.d/default.conf
+COPY nginx/trial-sites.conf /etc/nginx/conf.d/trial-sites.conf
+
+# Copy static files
+COPY . /usr/share/nginx/html/
+
+# SSL certificates (optional - will be mounted in production)
+# COPY ssl/*.pem /etc/nginx/ssl/
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/ || exit 1
+
+# Expose port
+EXPOSE 80
+
+# Use non-root user
+USER saas
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]
