@@ -2,371 +2,271 @@ import requests
 import time
 import logging
 import json
-from typing import Tuple, List
+import subprocess
+from typing import Tuple, List, Dict
 import mysql.connector
+import os
 
 logger = logging.getLogger(__name__)
 
-class FrappeDirectManager:
-    """مدير للاتصال المباشر مع حاويات Frappe"""
+class RealFrappeManager:
+    """مدير فعلي إجباري لإنشاء مواقع Frappe حقيقية"""
     
     def __init__(self):
-        self.app_servers = [
-            {'ip': '172.20.0.20', 'port': 8000, 'name': 'app-server-1'},
+        self.bench_path = "/home/frappe/production"
+        self.sites_path = "/home/frappe/production/sites"
+        
+        logger.info(f"🔧 [REAL] تهيئة RealFrappeManager الإجباري")
+        logger.info(f"📁 المسار: {self.bench_path}")
+        logger.info(f"📁 مواقع: {self.sites_path}")
+        
+        # التحقق الفوري من البيئة
+        self._debug_environment()
+    
+    def _debug_environment(self):
+        """تصحيح بيئة النظام"""
+        logger.info("🔍 فحص بيئة النظام...")
+        
+        # التحقق من المسارات
+        paths_to_check = [
+            self.bench_path,
+            self.sites_path,
+            "/usr/local/bin/bench",
+            "/home/frappe/.local/bin/bench"
         ]
         
-        self.db_config = {
-            'host': '172.20.0.10',
-            'user': 'root', 
-            'password': '123456',
-            'database': 'frappe'
-        }
-        self.session = requests.Session()
-        self.session.timeout = 30
-    
-    def get_available_server(self):
-        """العثور على خادم Frappe متاح"""
-        for server in self.app_servers:
-            try:
-                test_url = f"http://{server['ip']}:{server['port']}/api/method/version"
-                response = self.session.get(test_url, timeout=5)
-                if response.status_code == 200:
-                    logger.info(f"✅ وجد خادم نشط: {server['name']} - {server['ip']}:{server['port']}")
-                    return server
-            except Exception as e:
-                logger.warning(f"⚠️ الخادم {server['name']} غير متاح: {e}")
+        for path in paths_to_check:
+            exists = os.path.exists(path)
+            logger.info(f"   {'✅' if exists else '❌'} {path} - {'موجود' if exists else 'غير موجود'}")
         
-        logger.error("❌ لا توجد خوادم Frappe متاحة")
-        return None
-    
-    def call_frappe_api(self, server: dict, endpoint: str, method: str = 'GET', data: dict = None) -> Tuple[bool, dict]:
-        """استدعاء واجهات Frappe API"""
+        # التحقق من أوامر النظام
+        commands_to_check = ["which bench", "bench --version", "python --version"]
+        for cmd in commands_to_check:
+            try:
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+                status = "✅" if result.returncode == 0 else "❌"
+                logger.info(f"   {status} {cmd} - {result.returncode}")
+                if result.stdout:
+                    logger.info(f"      stdout: {result.stdout.strip()}")
+                if result.stderr:
+                    logger.info(f"      stderr: {result.stderr.strip()}")
+            except Exception as e:
+                logger.info(f"   ❌ {cmd} - خطأ: {str(e)}")
+
+    def execute_bench_command(self, command: List[str], site: str = None) -> Tuple[bool, str]:
+        """تنفيذ أوامر bench مع تتبع تفصيلي"""
         try:
-            url = f"http://{server['ip']}:{server['port']}{endpoint}"
-            
-            logger.info(f"🌐 استدعاء Frappe API: {method} {url}")
-            
-            headers = {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-            
-            if method.upper() == 'GET':
-                response = self.session.get(url, headers=headers, timeout=30)
-            elif method.upper() == 'POST':
-                response = self.session.post(url, json=data, headers=headers, timeout=30)
+            # بناء الأمر
+            if site:
+                full_command = ["bench", "--site", site] + command
             else:
-                return False, {"error": f"Method {method} not supported"}
+                full_command = ["bench"] + command
             
-            # التحقق من أن الاستجابة هي JSON
-            content_type = response.headers.get('content-type', '')
-            if 'application/json' not in content_type:
-                return False, {
-                    "error": f"Expected JSON but got {content_type}",
-                    "content": response.text[:500],  # أول 500 حرف فقط للتصحيح
-                    "status_code": response.status_code
-                }
+            cmd_str = ' '.join(full_command)
+            logger.info(f"🔧 [REAL] تنفيذ أمر: {cmd_str}")
+            logger.info(f"📁 المجلد الحالي: {self.bench_path}")
             
-            if response.status_code == 200:
-                result = response.json()
-                logger.info(f"✅ استدعاء API ناجح: {endpoint}")
-                return True, result
-            else:
-                error_msg = {
-                    "error": f"HTTP {response.status_code}",
-                    "message": response.text[:500],
-                    "endpoint": endpoint
-                }
-                logger.error(f"❌ فشل استدعاء API: {error_msg}")
-                return False, error_msg
-                
-        except requests.exceptions.RequestException as e:
-            error_msg = {"error": f"Request failed: {str(e)}", "server": server['name']}
-            logger.error(f"❌ فشل طلب API: {error_msg}")
-            return False, error_msg
-        except json.JSONDecodeError as e:
-            error_msg = {"error": f"JSON decode error: {str(e)}", "content": response.text[:500]}
-            logger.error(f"❌ خطأ في فك JSON: {error_msg}")
-            return False, error_msg
-        except Exception as e:
-            error_msg = {"error": str(e), "server": server['name']}
-            logger.error(f"❌ خطأ غير متوقع: {error_msg}")
-            return False, error_msg
-    
-    def create_site_via_api(self, site_name: str, apps: List[str] = None) -> Tuple[bool, str]:
-        """إنشاء موقع عبر Frappe API"""
-        try:
-            if apps is None:
-                apps = ["erpnext"]
-            
-            logger.info(f"🚀 محاولة إنشاء موقع حقيقي: {site_name}")
-            
-            # العثور على خادم متاح
-            server = self.get_available_server()
-            if not server:
-                return False, "❌ لا توجد خوادم Frappe متاحة"
-            
-            logger.info(f"🎯 استخدام الخادم: {server['name']} لإنشاء الموقع")
-            
-            # بيانات إنشاء الموقع
-            site_data = {
-                "site_name": site_name,
-                "apps": apps,
-                "admin_password": "admin123",
-                "install_apps": True,
-                "db_name": site_name.replace('.', '_'),
-                "db_password": "admin123",
-                "db_type": "mariadb"
-            }
-            
-            # استدعاء API إنشاء الموقع
-            success, result = self.call_frappe_api(
-                server, 
-                "/api/method/frappe.utils.installer.create_site", 
-                "POST", 
-                site_data
+            # تنفيذ الأمر مع تسجيل تفصيلي
+            start_time = time.time()
+            result = subprocess.run(
+                full_command,
+                cwd=self.bench_path,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env=os.environ.copy()
             )
+            execution_time = time.time() - start_time
             
-            if success:
-                site_url = f"http://{site_name}"
-                logger.info(f"✅ تم إنشاء موقع Frappe حقيقي: {site_url}")
-                logger.info(f"   الاستجابة: {json.dumps(result, ensure_ascii=False)[:200]}...")
-                return True, site_url
+            # تسجيل النتيجة بالتفصيل
+            logger.info(f"⏱️ وقت التنفيذ: {execution_time:.2f} ثانية")
+            logger.info(f"📤 كود الخروج: {result.returncode}")
+            
+            if result.stdout:
+                logger.info(f"📄 stdout: {result.stdout.strip()}")
+            if result.stderr:
+                logger.info(f"📄 stderr: {result.stderr.strip()}")
+            
+            if result.returncode == 0:
+                logger.info(f"✅ [REAL] أمر ناجح")
+                return True, result.stdout
             else:
-                logger.error(f"❌ فشل إنشاء الموقع: {result}")
+                logger.error(f"❌ [REAL] فشل الأمر: كود {result.returncode}")
+                return False, result.stderr if result.stderr else result.stdout
                 
-                # محاولة بديلة باستخدام bench
-                logger.info("🔄 محاولة استخدام طريقة بديلة...")
-                alternative_success, alternative_result = self.create_site_alternative(site_name, apps, server)
-                if alternative_success:
-                    return True, alternative_result
-                
-                return False, f"فشل إنشاء الموقع: {result.get('error', 'Unknown error')}"
-                
+        except subprocess.TimeoutExpired:
+            logger.error(f"⏰ [REAL] انتهت مهلة تنفيذ الأمر (300 ثانية)")
+            return False, "انتهت مهلة تنفيذ الأمر"
         except Exception as e:
-            logger.error(f"❌ خطأ في إنشاء الموقع: {str(e)}")
-            return False, f"خطأ في إنشاء الموقع: {str(e)}"
-    
-    def create_site_alternative(self, site_name: str, apps: List[str], server: dict) -> Tuple[bool, str]:
-        """طريقة بديلة لإنشاء الموقع"""
-        try:
-            logger.info(f"🔄 محاولة بديلة لإنشاء الموقع: {site_name}")
-            
-            # استخدام واجهة مختلفة أو طريقة بديلة
-            site_data = {
-                "name": site_name,
-                "apps": apps,
-                "admin_password": "admin123"
-            }
-            
-            success, result = self.call_frappe_api(
-                server,
-                "/api/method/press.api.site.create",
-                "POST",
-                site_data
-            )
-            
-            if success:
-                site_url = f"http://{site_name}"
-                logger.info(f"✅ تم إنشاء الموقع بالطريقة البديلة: {site_url}")
-                return True, site_url
-            else:
-                logger.warning(f"⚠️ فشل الطريقة البديلة: {result}")
-                return False, "فشل جميع طرق إنشاء الموقع"
-                
-        except Exception as e:
-            logger.error(f"❌ خطأ في الطريقة البديلة: {str(e)}")
-            return False, f"خطأ في الطريقة البديلة: {str(e)}"
-    
-    def create_trial_site(self, subdomain: str, company_name: str, apps: List[str], admin_email: str) -> Tuple[bool, str]:
-        """إنشاء موقع تجريبي"""
+            logger.error(f"💥 [REAL] خطأ في التنفيذ: {str(e)}")
+            return False, f"خطأ في التنفيذ: {str(e)}"
+
+    def create_trial_site(self, subdomain: str, company_name: str, apps: List[str], admin_email: str, admin_password: str = "admin123") -> Tuple[bool, str]:
+        """إنشاء موقع تجريبي فعلي مع تتبع كامل"""
         try:
             site_name = f"{subdomain}.trial.local"
             
-            logger.info(f"🎯 بدء إنشاء موقع تجريبي حقيقي: {site_name}")
+            logger.info(f"🚀 [REAL] بدء إنشاء موقع فعلي: {site_name}")
             logger.info(f"   الشركة: {company_name}")
             logger.info(f"   التطبيقات: {apps}")
             logger.info(f"   البريد: {admin_email}")
             
-            # إنشاء الموقع
-            success, site_url = self.create_site_via_api(site_name, apps)
+            # 1. التحقق من bench أولاً
+            logger.info("🔍 المرحلة 1: التحقق من نظام bench...")
+            bench_success, bench_output = self.execute_bench_command(["--version"])
+            if not bench_success:
+                logger.error(f"❌ [REAL] نظام bench غير متاح")
+                return False, f"نظام bench غير متاح: {bench_output}"
             
-            if success:
-                # إعداد بيانات الشركة
-                self.setup_company_data(site_name, company_name, admin_email)
-                
-                # إضافة تكوين Nginx للموقع الجديد
-                nginx_success, nginx_msg = self.create_nginx_config(site_name)
-                if nginx_success:
-                    logger.info(f"✅ تم إضافة تكوين Nginx: {nginx_msg}")
+            logger.info("✅ [REAL] نظام bench جاهز")
+            
+            # 2. التحقق من المواقع الحالية
+            logger.info("🔍 المرحلة 2: التحقق من المواقع الحالية...")
+            current_sites = self.get_all_sites()
+            logger.info(f"📋 المواقع الحالية: {current_sites}")
+            
+            if site_name in current_sites:
+                logger.warning(f"⚠️ [REAL] الموقع موجود مسبقاً: {site_name}")
+                return True, f"http://{site_name}"
+            
+            # 3. إنشاء الموقع
+            logger.info("🔍 المرحلة 3: إنشاء الموقع...")
+            create_cmd = [
+                "new-site", site_name,
+                "--admin-password", admin_password,
+                "--db-root-password", "123456",
+                "--force"
+            ]
+            
+            success, message = self.execute_bench_command(create_cmd)
+            if not success:
+                logger.error(f"❌ [REAL] فشل إنشاء الموقع: {message}")
+                return False, f"فشل إنشاء الموقع: {message}"
+            
+            logger.info(f"✅ [REAL] تم إنشاء الموقع الأساسي: {site_name}")
+            
+            # 4. تثبيت التطبيقات
+            logger.info("🔍 المرحلة 4: تثبيت التطبيقات...")
+            apps_to_install = apps if apps else ["erpnext"]
+            installed_apps = []
+            
+            for app in apps_to_install:
+                logger.info(f"📦 تثبيت التطبيق: {app}")
+                app_success, app_message = self.execute_bench_command(["install-app", app], site_name)
+                if app_success:
+                    logger.info(f"✅ تم تثبيت {app}")
+                    installed_apps.append(app)
                 else:
-                    logger.warning(f"⚠️ فشل إضافة تكوين Nginx: {nginx_msg}")
+                    logger.warning(f"⚠️ فشل تثبيت {app}: {app_message}")
+            
+            # 5. تمكين المجدول
+            logger.info("🔍 المرحلة 5: تمكين المجدول...")
+            self.execute_bench_command(["enable-scheduler"], site_name)
+            
+            # 6. التحقق النهائي
+            logger.info("🔍 المرحلة 6: التحقق النهائي...")
+            final_sites = self.get_all_sites()
+            site_created = site_name in final_sites
+            
+            if site_created:
+                # إنشاء بيانات الشركة
+                self._create_site_metadata(site_name, company_name, admin_email, installed_apps)
                 
-                logger.info(f"🎉 تم إنشاء موقع Frappe حقيقي بنجاح: {site_url}")
-                return True, site_url
+                logger.info(f"🎉 [REAL] تم إنشاء الموقع الفعلي بنجاح: {site_name}")
+                logger.info(f"📊 التطبيقات المثبتة: {installed_apps}")
+                logger.info(f"📋 جميع المواقع: {final_sites}")
+                
+                return True, f"http://{site_name}"
             else:
-                logger.error(f"❌ فشل إنشاء الموقع التجريبي: {site_url}")
-                return False, site_url
-                
+                logger.error(f"❌ [REAL] الموقع غير موجود في القائمة النهائية")
+                logger.error(f"📋 المواقع المتاحة: {final_sites}")
+                return False, "الموقع غير موجود في القائمة النهائية"
+            
         except Exception as e:
-            logger.error(f"❌ خطأ في إنشاء الموقع التجريبي: {str(e)}")
-            return False, f"خطأ في إنشاء الموقع التجريبي: {str(e)}"
-    
-    def setup_company_data(self, site_name: str, company_name: str, email: str):
-        """إعداد بيانات الشركة"""
+            logger.error(f"💥 [REAL] خطأ غير متوقع: {str(e)}")
+            import traceback
+            logger.error(f"📝 تفاصيل الخطأ: {traceback.format_exc()}")
+            return False, f"خطأ غير متوقع: {str(e)}"
+
+    def _create_site_metadata(self, site_name: str, company_name: str, email: str, apps: List[str]):
+        """إنشاء بيانات وصفية للموقع"""
         try:
-            logger.info(f"🏢 إعداد بيانات الشركة: {company_name}")
+            site_dir = os.path.join(self.sites_path, site_name)
+            os.makedirs(site_dir, exist_ok=True)
             
-            # العثور على خادم متاح
-            server = self.get_available_server()
-            if not server:
-                logger.warning("⚠️ لا يوجد خادم متاح لإعداد بيانات الشركة")
-                return
-            
-            # تحديث بيانات الشركة في Frappe
-            company_data = {
+            metadata = {
                 "company_name": company_name,
                 "email": email,
-                "abbr": company_name[:4].upper()
+                "apps_installed": apps,
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "site_name": site_name,
+                "manager": "RealFrappeManager"
             }
             
-            success, result = self.call_frappe_api(
-                server,
-                f"/api/method/frappe.client.set_value",
-                "POST",
-                {
-                    "doctype": "Company",
-                    "name": company_name,
-                    "fieldname": "company_name",
-                    "value": company_name
-                }
-            )
+            metadata_file = os.path.join(site_dir, "site_metadata.json")
+            with open(metadata_file, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, ensure_ascii=False, indent=2)
             
-            if success:
-                logger.info("✅ تم إعداد بيانات الشركة بنجاح")
-            else:
-                logger.warning(f"⚠️ فشل إعداد بيانات الشركة: {result}")
+            logger.info(f"💼 [REAL] تم حفظ بيانات الموقع: {metadata_file}")
             
         except Exception as e:
-            logger.warning(f"⚠️ فشل إعداد بيانات الشركة: {str(e)}")
-    
-    def create_nginx_config(self, site_name: str) -> Tuple[bool, str]:
-        """إنشاء تكوين Nginx للموقع الجديد"""
-        try:
-            # استيراد NginxManager هنا لتجنب التبعيات الدائرية
-            from nginx_manager import nginx_manager
-            
-            success, message = nginx_manager.create_site_config(site_name)
-            return success, message
-            
-        except Exception as e:
-            return False, f"خطأ في إنشاء تكوين Nginx: {str(e)}"
-    
+            logger.warning(f"⚠️ [REAL] فشل حفظ البيانات الوصفية: {str(e)}")
+
     def get_all_sites(self) -> List[str]:
-        """الحصول على قائمة المواقع"""
+        """الحصول على قائمة المواقع الفعلية"""
         try:
-            # العثور على خادم متاح
-            server = self.get_available_server()
-            if not server:
-                logger.warning("⚠️ لا يوجد خادم متاح لجلب المواقع")
-                return ["لا توجد خوادم متاحة"]
-            
-            # جلب المواقع من Frappe
-            success, result = self.call_frappe_api(
-                server,
-                "/api/method/frappe.utils.installer.get_sites",
-                "GET"
-            )
+            success, output = self.execute_bench_command(["site", "list"])
             
             if success:
-                sites = result.get("message", [])
-                logger.info(f"📋 جلب {len(sites)} موقع من Frappe")
+                sites = []
+                for line in output.split('\n'):
+                    site = line.strip()
+                    if site and not site.startswith('#'):
+                        sites.append(site)
                 return sites
             else:
-                logger.warning(f"⚠️ فشل جلب المواقع: {result}")
-                return ["فشل جلب المواقع"]
-            
-        except Exception as e:
-            logger.error(f"❌ فشل جلب المواقع: {str(e)}")
-            return [f"خطأ في جلب المواقع: {str(e)}"]
-
-class MockFrappeManager:
-    """مدير وهمي لاستخدامه عندما يكون Frappe غير متاح"""
-    
-    def __init__(self):
-        logger.info("🔧 استخدام MockFrappeManager للاختبار - لن يتم إنشاء مواقع حقيقية!")
-    
-    def create_trial_site(self, subdomain: str, company_name: str, apps: List[str], admin_email: str) -> Tuple[bool, str]:
-        """إنشاء موقع تجريبي وهمي"""
-        try:
-            site_name = f"{subdomain}.trial.local"
-            logger.info(f"🎯 [MOCK] إنشاء موقع تجريبي: {site_name}")
-            logger.info(f"   الشركة: {company_name}")
-            logger.info(f"   التطبيقات: {apps}")
-            logger.info("   ⚠️ هذا موقع وهمي ولن يكون متاحاً فعلياً")
-            
-            time.sleep(2)  # محاكاة وقت الإنشاء
-            
-            site_url = f"http://{site_name}"
-            logger.info(f"✅ [MOCK] تم إنشاء الموقع: {site_url}")
-            
-            return True, site_url
-            
-        except Exception as e:
-            return False, f"خطأ في المحاكاة: {str(e)}"
-    
-    def get_all_sites(self) -> List[str]:
-        """الحصول على قائمة مواقع وهمية"""
-        return ["mock1.trial.local", "mock2.trial.local", "mock3.trial.local"]
-
-
-def get_frappe_direct_manager():
-    """الحصول على مدير الاتصال المباشر"""
-    try:
-        manager = FrappeDirectManager()
-        
-        # اختبار مفصل للاتصال بجميع الخوادم
-        available_servers = []
-        for server in manager.app_servers:
-            try:
-                test_url = f"http://{server['ip']}:{server['port']}/api/method/version"
-                logger.info(f"🔍 اختبار اتصال بـ: {server['name']} - {test_url}")
-                response = manager.session.get(test_url, timeout=5)
+                logger.error(f"❌ [REAL] فشل جلب المواقع: {output}")
+                return []
                 
-                if response.status_code == 200:
-                    available_servers.append({
-                        'server': server,
-                        'status': 'connected',
-                        'version': response.json().get('version', 'Unknown')
-                    })
-                    logger.info(f"✅ اتصال ناجح مع {server['name']}: {response.json().get('version', 'Unknown')}")
-                else:
-                    available_servers.append({
-                        'server': server,
-                        'status': f'failed_{response.status_code}',
-                        'error': response.text[:100]
-                    })
-                    logger.warning(f"⚠️ {server['name']} غير متاح: HTTP {response.status_code}")
-                    
-            except Exception as e:
-                available_servers.append({
-                    'server': server,
-                    'status': 'error',
-                    'error': str(e)
-                })
-                logger.warning(f"❌ فشل الاتصال بـ {server['name']}: {e}")
-        
-        # إذا وجدنا خادم متاح، استخدم المدير الحقيقي
-        if any(s['status'] == 'connected' for s in available_servers):
-            logger.info(f"🎯 استخدام FrappeDirectManager مع {len([s for s in available_servers if s['status'] == 'connected'])} خوادم نشطة")
-            return manager
-        else:
-            logger.error("🚨 جميع خوادم Frappe غير متاحة، استخدام المحاكاة")
-            logger.error("   تفاصيل الخوادم:")
-            for server_info in available_servers:
-                logger.error(f"   - {server_info['server']['name']}: {server_info['status']} - {server_info.get('error', '')}")
-            return MockFrappeManager()
-            
-    except Exception as e:
-        logger.error(f"🚨 فشل تهيئة FrappeDirectManager: {e}")
-        return MockFrappeManager()
+        except Exception as e:
+            logger.error(f"❌ [REAL] خطأ في جلب المواقع: {e}")
+            return []
+
+    def get_site_info(self, site_name: str) -> Dict:
+        """الحصول على معلومات الموقع"""
+        try:
+            sites = self.get_all_sites()
+            if site_name in sites:
+                return {
+                    'name': site_name,
+                    'status': 'active',
+                    'url': f"http://{site_name}",
+                    'exists': True,
+                    'manager': 'RealFrappeManager'
+                }
+            else:
+                return {'error': 'الموقع غير موجود', 'exists': False}
+        except Exception as e:
+            return {'error': str(e), 'exists': False}
+
+# إجبار استخدام المدير الفعلي دائماً - لا محاكاة
+frappe_direct_manager = RealFrappeManager()
+logger.info("🎯 تم تحميل RealFrappeManager بشكل إجباري - لا محاكاة!")
+
+# دالة مساعدة للاختبار السريع
+def test_bench_connection():
+    """اختبار سريع للاتصال"""
+    logger.info("🧪 بدء اختبار الاتصال السريع...")
+    manager = RealFrappeManager()
+    
+    # اختبار بسيط
+    success, output = manager.execute_bench_command(["--version"])
+    if success:
+        logger.info("✅ اختبار الاتصال ناجح!")
+        return True
+    else:
+        logger.error("❌ اختبار الاتصال فاشل!")
+        return False
+
+# تشغيل الاختبار عند التحميل
+test_bench_connection()
