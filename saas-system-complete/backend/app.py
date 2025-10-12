@@ -70,7 +70,8 @@ class DatabaseManager:
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 expires_at DATETIME NOT NULL,
                 status ENUM('active', 'expired', 'converted') DEFAULT 'active',
-                frappe_site_created BOOLEAN DEFAULT FALSE
+                frappe_site_created BOOLEAN DEFAULT FALSE,
+                frappe_manager_type VARCHAR(50) DEFAULT 'unknown'
             )
             """)
             
@@ -95,8 +96,8 @@ class DatabaseManager:
             query = """
             INSERT INTO trial_customers 
             (company_name, contact_name, email, phone, subdomain, site_url, site_name, 
-             admin_password, selected_apps, trial_days, expires_at, frappe_site_created)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             admin_password, selected_apps, trial_days, expires_at, frappe_site_created, frappe_manager_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
             cursor.execute(query, (
@@ -111,7 +112,8 @@ class DatabaseManager:
                 json.dumps(customer_data.get('selected_apps', [])),
                 trial_days,
                 expires_at,
-                customer_data.get('frappe_site_created', False)
+                customer_data.get('frappe_site_created', False),
+                customer_data.get('frappe_manager_type', 'unknown')
             ))
             
             customer_id = cursor.lastrowid
@@ -153,7 +155,8 @@ class TrialManager:
     def __init__(self):
         self.db = DatabaseManager()
         self.frappe_manager = get_frappe_direct_manager()
-        logger.info(f"✅ تم تهيئة مدير Frappe المباشر: {type(self.frappe_manager).__name__}")
+        manager_type = type(self.frappe_manager).__name__
+        logger.info(f"✅ تم تهيئة مدير Frappe: {manager_type}")
     
     def generate_subdomain(self, company_name):
         """إنشاء subdomain فريد"""
@@ -178,14 +181,20 @@ class TrialManager:
                 if not data.get(field):
                     return False, f'حقل {field} مطلوب'
             
+            # التحقق من أننا نستخدم المدير الحقيقي وليس المحاكاة
+            if isinstance(self.frappe_manager, MockFrappeManager):
+                logger.warning("⚠️ يتم استخدام MockFrappeManager - لن يتم إنشاء موقع حقيقي!")
+                return False, "نظام Frappe غير متاح حالياً. يرجى المحاولة لاحقاً."
+            
             # إنشاء subdomain فريد
             subdomain = self.generate_subdomain(data['company_name'])
             site_name = f"{subdomain}.trial.local"
             
-            logger.info(f"🚀 بدء إنشاء موقع تجريبي لـ: {data['company_name']}")
+            logger.info(f"🚀 بدء إنشاء موقع تجريبي حقيقي لـ: {data['company_name']}")
             logger.info(f"   Subdomain: {subdomain}")
             logger.info(f"   Site Name: {site_name}")
             logger.info(f"   التطبيقات: {data.get('selected_apps', [])}")
+            logger.info(f"   مدير Frappe: {type(self.frappe_manager).__name__}")
             
             # إنشاء الموقع
             success, site_url = self.frappe_manager.create_trial_site(
@@ -211,7 +220,8 @@ class TrialManager:
                 'admin_password': 'admin123',
                 'selected_apps': data.get('selected_apps', []),
                 'trial_days': data.get('trial_days', 14),
-                'frappe_site_created': True
+                'frappe_site_created': True,
+                'frappe_manager_type': type(self.frappe_manager).__name__
             }
             
             # حفظ في قاعدة البيانات
@@ -224,7 +234,7 @@ class TrialManager:
             else:
                 logger.warning(f"⚠️ فشل إضافة تكوين Nginx: {nginx_msg}")
             
-            logger.info(f"🎉 تم إنشاء حساب تجريبي بنجاح: {site_url}")
+            logger.info(f"🎉 تم إنشاء حساب تجريبي حقيقي بنجاح: {site_url}")
             return True, site_url
             
         except mysql.connector.IntegrityError as e:
@@ -248,7 +258,8 @@ def health_check():
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         
-        # اختبار اتصال Frappe Press
+        # اختبار اتصال Frappe
+        manager_type = type(trial_manager.frappe_manager).__name__
         sites = trial_manager.frappe_manager.get_all_sites()
         
         cursor.close()
@@ -258,8 +269,8 @@ def health_check():
             'success': True,
             'message': '✅ النظام يعمل بشكل صحيح',
             'database': '✅ متصل',
-            'frappe_press': f'✅ متصل ({len(sites)} مواقع)',
-            'frappe_manager': type(trial_manager.frappe_manager).__name__,
+            'frappe_manager': manager_type,
+            'frappe_sites_count': len(sites),
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -289,6 +300,7 @@ def create_trial():
                 'site_url': result,
                 'message': '🎉 تم إنشاء موقعك التجريبي بنجاح!',
                 'type': 'frappe_press_site',
+                'manager_type': type(trial_manager.frappe_manager).__name__,
                 'execution_time': f"{execution_time:.2f} ثانية"
             })
         else:
@@ -296,6 +308,7 @@ def create_trial():
                 'success': False,
                 'message': result,
                 'type': 'error',
+                'manager_type': type(trial_manager.frappe_manager).__name__,
                 'execution_time': f"{execution_time:.2f} ثانية"
             }), 400
             
@@ -316,7 +329,8 @@ def get_frappe_sites():
         return jsonify({
             'success': True,
             'sites': sites,
-            'count': len(sites)
+            'count': len(sites),
+            'manager_type': type(trial_manager.frappe_manager).__name__
         })
     except Exception as e:
         return jsonify({
@@ -504,23 +518,63 @@ def test_nginx_config():
 def debug_frappe_connection():
     """تصحيح اتصال Frappe"""
     try:
-        # اختبار الاتصال المباشر
-        test_url = "http://172.20.0.20:8000/api/method/version"
+        # اختبار جميع الخوادم المتاحة
+        servers = [
+            {"ip": "172.20.0.20", "port": 8000, "name": "app-server-1"},
+            {"ip": "172.20.0.21", "port": 8001, "name": "app-server-2"},
+            {"ip": "press.localdev.me", "port": 8000, "name": "press-server"},
+            {"ip": "localhost", "port": 8000, "name": "localhost"}
+        ]
         
-        response = requests.get(test_url, timeout=10)
+        results = []
+        for server in servers:
+            try:
+                test_url = f"http://{server['ip']}:{server['port']}/api/method/version"
+                response = requests.get(test_url, timeout=5)
+                results.append({
+                    'server': server['name'],
+                    'status': 'connected' if response.status_code == 200 else 'failed',
+                    'status_code': response.status_code,
+                    'url': test_url
+                })
+            except Exception as e:
+                results.append({
+                    'server': server['name'],
+                    'status': 'error',
+                    'error': str(e),
+                    'url': test_url
+                })
         
         return jsonify({
             'success': True,
-            'frappe_status': 'connected' if response.status_code == 200 else 'failed',
-            'status_code': response.status_code,
-            'content_type': response.headers.get('content-type', 'unknown'),
-            'response_preview': response.text[:200] if response.text else 'empty'
+            'servers': results,
+            'current_manager': type(trial_manager.frappe_manager).__name__
         })
         
     except Exception as e:
         return jsonify({
             'success': False,
-            'frappe_status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/debug/frappe-manager', methods=['GET'])
+def debug_frappe_manager():
+    """تصحيح مدير Frappe"""
+    try:
+        manager_info = {
+            'type': type(trial_manager.frappe_manager).__name__,
+            'module': trial_manager.frappe_manager.__class__.__module__,
+            'available_servers': getattr(trial_manager.frappe_manager, 'app_servers', []),
+            'is_mock': isinstance(trial_manager.frappe_manager, MockFrappeManager)
+        }
+        
+        return jsonify({
+            'success': True,
+            'manager_info': manager_info
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
             'error': str(e)
         }), 500
 
