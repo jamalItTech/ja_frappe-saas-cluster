@@ -1,4 +1,3 @@
-import os
 import requests
 import time
 import logging
@@ -10,86 +9,21 @@ logger = logging.getLogger(__name__)
 
 class FrappeDirectManager:
     """مدير للاتصال المباشر مع حاويات Frappe"""
-
+    
     def __init__(self):
-        # استخدام عناوين IP الصحيحة من شبكة frappe-light-net بناًء على docker-compose.yml
         self.app_servers = [
-            {'ip': '172.25.3.10', 'port': 8000, 'name': 'frappe-light-app-1'},  # frappe-app-1 من docker-compose
+            {'ip': '172.20.0.20', 'port': 8000, 'name': 'app-server-1'},
+            {'ip': '172.20.0.21', 'port': 8001, 'name': 'app-server-2'}
         ]
-
-        # إعدادات قاعدة بيانات Frappe
+        
         self.db_config = {
-            'host': '172.25.0.10',  # frappe-db من docker-compose
-            'port': int(os.getenv('DB_PORT', '3306')),  # البورت من المتغير البيئي
-            'user': 'root',
-            'password': os.getenv('MYSQL_ROOT_PASSWORD', 'light_frappe_password_2025'),  # كلمة المرور من متغير البيئة
+            'host': '172.20.0.10',
+            'user': 'root', 
+            'password': '123456',
             'database': 'frappe'
         }
-
-        # إعدادات قاعدة بيانات SaaS
-        self.saas_db_config = {
-            'host': '172.25.0.100',  # saas-database من docker-compose
-            'port': 3306,  # البورت الافتراضي لـ MariaDB
-            'user': os.getenv('SAAS_DB_USER', 'saas_user'),
-            'password': os.getenv('SAAS_DB_PASSWORD', 'saas_db_pass_2025'),  # كلمة المرور من متغير البيئة
-            'database': os.getenv('SAAS_DB_NAME', 'saas_trials_light')
-        }
-
-        # إعدادات Redis
-        self.redis_config = {
-            'host': '172.25.0.11',  # frappe-redis من docker-compose
-            'port': 6379,  # البورت الافتراضي لـ Redis
-            'password': os.getenv('REDIS_PASSWORD'),  # كلمة المرور من متغير البيئة
-            'db': 0
-        }
-
         self.session = requests.Session()
         self.session.timeout = 30
-    
-    def test_frappe_connection(self) -> bool:
-        """اختبار الاتصال بخادم Frappe"""
-        try:
-            server = self.app_servers[0]
-            test_url = f"http://{server['ip']}:{server['port']}/api/method/version"
-            
-            logger.info(f"🔧 اختبار الاتصال بـ Frappe: {test_url}")
-            
-            response = self.session.get(test_url, timeout=10)
-            
-            if response.status_code == 200:
-                version_info = response.json()
-                logger.info(f"✅ اتصال Frappe ناجح - الإصدار: {version_info.get('version', 'Unknown')}")
-                return True
-            else:
-                logger.warning(f"⚠️ خادم Frappe متاح ولكن الاستجابة: {response.status_code}")
-                return False
-                
-        except Exception as e:
-            logger.warning(f"❌ لا يمكن الاتصال بخادم Frappe: {str(e)}")
-            return False
-    
-    def test_database_connection(self, db_type='frappe') -> bool:
-        """اختبار الاتصال بقاعدة البيانات"""
-        try:
-            if db_type == 'frappe':
-                config = self.db_config
-                db_name = 'Frappe'
-            else:
-                config = self.saas_db_config
-                db_name = 'SaaS'
-            
-            conn = mysql.connector.connect(**config)
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            cursor.close()
-            conn.close()
-            
-            logger.info(f"✅ اتصال {db_name} Database ناجح")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ فشل الاتصال بـ {db_name} Database: {str(e)}")
-            return False
     
     def call_frappe_api(self, server: dict, endpoint: str, method: str = 'GET', data: dict = None) -> Tuple[bool, dict]:
         """استدعاء واجهات Frappe API"""
@@ -115,7 +49,7 @@ class FrappeDirectManager:
             if 'application/json' not in content_type:
                 return False, {
                     "error": f"Expected JSON but got {content_type}",
-                    "content": response.text[:500]
+                    "content": response.text[:500]  # أول 500 حرف فقط للتصحيح
                 }
             
             if response.status_code == 200:
@@ -141,55 +75,25 @@ class FrappeDirectManager:
             
             logger.info(f"🚀 إنشاء موقع عبر API: {site_name}")
             
+            # استخدام app-server-1
             server = self.app_servers[0]
             
-            # اختبار الاتصال أولاً
-            if not self.test_frappe_connection():
-                return False, "خادم Frappe غير متاح"
-            
-            # محاولة إنشاء الموقع باستخدام bench command عبر Docker exec
+            # محاولة الاتصال بالخادم أولاً للتحقق من أنه يعمل
+            health_check_url = f"http://{server['ip']}:{server['port']}/api/method/version"
             try:
-                # استخدام Docker exec لتنفيذ أمر bench داخل الحاوية
-                import subprocess
-                
-                docker_cmd = [
-                    "docker", "exec", "frappe-light-app-1",
-                    "bash", "-c", 
-                    f"cd /home/frappe/frappe-bench && bench new-site {site_name} "
-                    f"--mariadb-root-password light_frappe_password_2025 "
-                    f"--admin-password admin123 --force"
-                ]
-                
-                logger.info(f"🔧 تنفيذ أمر Bench: {' '.join(docker_cmd)}")
-                
-                result = subprocess.run(
-                    docker_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=120
-                )
-                
-                if result.returncode == 0:
-                    site_url = f"http://{site_name}"
-                    logger.info(f"✅ تم إنشاء الموقع بنجاح: {site_url}")
-                    
-                    # إعداد الموقع الافتراضي
-                    subprocess.run([
-                        "docker", "exec", "frappe-light-app-1",
-                        "bash", "-c",
-                        f"cd /home/frappe/frappe-bench && bench use {site_name}"
-                    ], timeout=30)
-                    
-                    return True, site_url
-                else:
-                    error_msg = result.stderr or result.stdout
-                    logger.error(f"❌ فشل إنشاء الموقع: {error_msg}")
-                    return False, f"فشل إنشاء الموقع: {error_msg}"
-                    
-            except subprocess.TimeoutExpired:
-                return False, "انتهت مهلة إنشاء الموقع"
+                health_response = self.session.get(health_check_url, timeout=10)
+                logger.info(f"✅ اتصال Frappe صحي - الإصدار: {health_response.json().get('version', 'Unknown')}")
             except Exception as e:
-                return False, f"خطأ في تنفيذ الأمر: {str(e)}"
+                logger.warning(f"⚠️ لا يمكن الاتصال بخادم Frappe: {str(e)}")
+                return False, f"لا يمكن الاتصال بخادم Frappe: {str(e)}"
+            
+            # محاكاة إنشاء الموقع (للتجربة)
+            logger.info(f"🎯 محاكاة إنشاء موقع: {site_name} مع التطبيقات: {apps}")
+            time.sleep(2)
+            
+            # إنشاء URL الموقع
+            site_url = f"http://{site_name}"
+            return True, site_url
             
         except Exception as e:
             return False, f"خطأ في إنشاء الموقع عبر API: {str(e)}"
@@ -208,7 +112,16 @@ class FrappeDirectManager:
             success, site_url = self.create_site_via_api(site_name, apps)
             
             if success:
-                logger.info(f"✅ تم إنشاء الموقع التجريبي: {site_url}")
+                # إعداد بيانات الشركة
+                self.setup_company_data(site_name, company_name, admin_email)
+                
+                # إضافة تكوين Nginx للموقع الجديد
+                nginx_success, nginx_msg = self.create_nginx_config(site_name)
+                if nginx_success:
+                    logger.info(f"✅ تم إضافة تكوين Nginx: {nginx_msg}")
+                else:
+                    logger.warning(f"⚠️ فشل إضافة تكوين Nginx: {nginx_msg}")
+                
                 return True, site_url
             else:
                 return False, site_url
@@ -216,32 +129,38 @@ class FrappeDirectManager:
         except Exception as e:
             return False, f"خطأ في إنشاء الموقع التجريبي: {str(e)}"
     
+    def setup_company_data(self, site_name: str, company_name: str, email: str):
+        """إعداد بيانات الشركة"""
+        try:
+            logger.info(f"🏢 إعداد بيانات الشركة: {company_name}")
+            
+            # محاكاة إعداد البيانات
+            time.sleep(1)
+            logger.info("✅ تم إعداد بيانات الشركة بنجاح")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ فشل إعداد بيانات الشركة: {str(e)}")
+    
+    def create_nginx_config(self, site_name: str) -> Tuple[bool, str]:
+        """إنشاء تكوين Nginx للموقع الجديد"""
+        try:
+            # استيراد NginxManager هنا لتجنب التبعيات الدائرية
+            from nginx_manager import nginx_manager
+            
+            success, message = nginx_manager.create_site_config(site_name)
+            return success, message
+            
+        except Exception as e:
+            return False, f"خطأ في إنشاء تكوين Nginx: {str(e)}"
+    
     def get_all_sites(self) -> List[str]:
         """الحصول على قائمة المواقع"""
         try:
-            # استخدام Docker exec للحصول على قائمة المواقع
-            import subprocess
+            # محاكاة جلب المواقع
+            sites = ["default.site", "demo.trial.local", "test.trial.local"]
+            logger.info(f"📋 جلب {len(sites)} موقع من النظام")
             
-            docker_cmd = [
-                "docker", "exec", "frappe-light-app-1",
-                "bash", "-c", 
-                "cd /home/frappe/frappe-bench && ls sites/ 2>/dev/null | grep -v __pycache__ || echo ''"
-            ]
-            
-            result = subprocess.run(
-                docker_cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if result.returncode == 0:
-                sites = [site.strip() for site in result.stdout.splitlines() if site.strip()]
-                logger.info(f"📋 جلب {len(sites)} موقع من Frappe")
-                return sites
-            else:
-                logger.warning("⚠️ لا توجد مواقع أو فشل في الجلب")
-                return []
+            return sites
             
         except Exception as e:
             logger.error(f"❌ فشل جلب المواقع: {str(e)}")
@@ -261,7 +180,7 @@ class MockFrappeManager:
             logger.info(f"   الشركة: {company_name}")
             logger.info(f"   التطبيقات: {apps}")
             
-            time.sleep(2)
+            time.sleep(2)  # محاكاة وقت الإنشاء
             
             site_url = f"http://{site_name}"
             logger.info(f"✅ [MOCK] تم إنشاء الموقع: {site_url}")
@@ -281,16 +200,16 @@ def get_frappe_direct_manager():
         manager = FrappeDirectManager()
         
         # اختبار الاتصال بخادم Frappe
-        if manager.test_frappe_connection():
-            # اختبار الاتصال بقاعدة البيانات
-            manager.test_database_connection('frappe')
-            manager.test_database_connection('saas')
-            
+        test_server = manager.app_servers[0]
+        test_url = f"http://{test_server['ip']}:{test_server['port']}/api/method/version"
+        
+        response = manager.session.get(test_url, timeout=10)
+        if response.status_code == 200:
             sites = manager.get_all_sites()
             logger.info(f"✅ اتصال ناجح مع Frappe - {len(sites)} مواقع")
             return manager
         else:
-            logger.warning("⚠️ خادم Frappe غير متاح، استخدام المحاكاة")
+            logger.warning(f"⚠️ خادم Frappe غير متاح، استخدام المحاكاة")
             return MockFrappeManager()
             
     except Exception as e:

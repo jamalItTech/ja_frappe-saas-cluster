@@ -1,62 +1,62 @@
 version: '3.8'
 
 services:
+  # 🌐 موقع الشركة الرئيسي (Frontend)
   frontend:
     image: nginx:alpine
     container_name: saas-frontend-v1
     networks:
-      frappe-cluster_frappe-light-net:
-        ipv4_address: 172.25.0.200  # استخدام IP في النطاق الصحيح
+      workspaces_frappe-cluster-net:
+        ipv4_address: 172.20.0.100
     ports:
-      - "8082:80"
+      - "8080:80"
     volumes:
       - ./frontend:/usr/share/nginx/html
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/frontend.conf:/etc/nginx/conf.d/default.conf
-      - ./nginx/trial-sites.conf:/etc/nginx/conf.d/trial-sites.conf
-      - nginx_cache:/var/cache/nginx
-      - nginx_logs:/var/log/nginx
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
+  # ⚡ نظام إدارة التجارب (Backend API)
   backend:
     build: ./backend
     container_name: saas-backend-v1
     networks:
-      frappe-cluster_frappe-light-net:
-        ipv4_address: 172.25.0.201
+      workspaces_frappe-cluster-net:
+        ipv4_address: 172.20.0.101
     ports:
       - "5000:5000"
     environment:
       - FLASK_ENV=production
-      - DB_HOST=172.25.0.100  # قاعدة بيانات SaaS الموجودة
-      - DB_USER=saas_user
-      - DB_PASSWORD=saas_db_pass_2025
-      - DB_NAME=saas_trials_light
+      - DB_HOST=172.20.0.102
+      - DB_USER=root
+      - DB_PASSWORD=123456
+      - DB_NAME=saas_trialsv1
       - SECRET_KEY=your-secret-key-change-in-production
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - FRAPPE_DB_HOST=172.25.0.10  # اتصال بفرابي
-      - FRAPPE_DB_PORT=4306
-      - FRAPPE_DB_USER=frappe_user
-      - FRAPPE_DB_PASSWORD=frappe_db_pass_2025
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./backend:/app
+      - ./nginx/dynamic-conf:/etc/nginx/conf.d/dynamic
+    depends_on:
+      - database
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
+  # 🗄️ قاعدة بيانات النظام
+  database:
+    image: mariadb:10.6
+    container_name: saas-database-v1
+    networks:
+      workspaces_frappe-cluster-net:
+        ipv4_address: 172.20.0.102
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: "saas_trialsv1"
+    volumes:
+      - saas_data-v1:/var/lib/mysql
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
 
 networks:
-  frappe-cluster_frappe-light-net:
+  workspaces_frappe-cluster-net:
     external: true
 
 volumes:
-  nginx_cache:
-  nginx_logs:
+  saas_data-v1:

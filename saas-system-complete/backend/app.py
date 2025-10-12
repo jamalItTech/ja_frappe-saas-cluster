@@ -6,7 +6,6 @@ import random
 import string
 import logging
 import time
-import os
 from datetime import datetime, timedelta
 from nginx_manager import nginx_manager
 
@@ -23,13 +22,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# إعدادات قاعدة البيانات SaaS من docker-compose.yml
+# إعدادات قاعدة البيانات
 DB_CONFIG = {
-    'host': os.getenv('SAAS_DB_HOST', '172.25.0.100'),  # saas-database من docker-compose
-    'user': os.getenv('SAAS_DB_USER', 'saas_user'),
-    'password': os.getenv('SAAS_DB_PASSWORD', 'saas_db_pass_2025'),  # كلمة المرور من متغير البيئة
-    'database': os.getenv('SAAS_DB_NAME', 'saas_trials_light'),  # اسم قاعدة البيانات
-    'port': int(os.getenv('SAAS_DB_PORT', 3306)),  # البورت من متغير البيئة
+    'host': '172.20.0.102',
+    'user': 'root',
+    'password': '123456',
+    'database': 'saas_trialsv1',
     'connect_timeout': 30,
 }
 
@@ -52,10 +50,10 @@ class DatabaseManager:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-
-            # Ensure the database is using the correct database from config
-            cursor.execute(f"USE {DB_CONFIG['database']}")
-
+            
+            cursor.execute("CREATE DATABASE IF NOT EXISTS saas_trialsv1")
+            cursor.execute("USE saas_trialsv1")
+            
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS trial_customers (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -68,39 +66,14 @@ class DatabaseManager:
                 site_name VARCHAR(255),
                 admin_password VARCHAR(100),
                 selected_apps TEXT,
-                trial_days INT NOT NULL DEFAULT 14,
+                trial_days INT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 expires_at DATETIME NOT NULL,
                 status ENUM('active', 'expired', 'converted') DEFAULT 'active',
-                frappe_site_created BOOLEAN DEFAULT FALSE,
-                notes TEXT,
-                INDEX idx_status (status),
-                INDEX idx_expires_at (expires_at),
-                INDEX idx_created_at (created_at),
-                INDEX idx_email (email)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                frappe_site_created BOOLEAN DEFAULT FALSE
+            )
             """)
-
-            # Check cluster_servers table
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS cluster_servers (
-                server_id VARCHAR(50) PRIMARY KEY,
-                ip_address VARCHAR(15) NOT NULL,
-                port INT NOT NULL,
-                active BOOLEAN DEFAULT TRUE,
-                role ENUM('active', 'standby', 'maintenance') DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_health_check TIMESTAMP NULL,
-                cpu_percent FLOAT DEFAULT 0.0,
-                memory_percent FLOAT DEFAULT 0.0,
-                sites_count INT DEFAULT 0,
-                status VARCHAR(20) DEFAULT 'unknown',
-                INDEX idx_active (active),
-                INDEX idx_role (role),
-                INDEX idx_last_health_check (last_health_check)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """)
-
+            
             conn.commit()
             cursor.close()
             conn.close()
@@ -269,24 +242,17 @@ trial_manager = TrialManager()
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """التحقق من صحة النظام"""
-    print("Health check start", flush=True)
     try:
-        print("Connecting to DB", flush=True)
         # اختبار اتصال قاعدة البيانات
         conn = get_db_connection()
-        print("Connected, execute SELECT 1", flush=True)
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
-        print("SELECT 1 done", flush=True)
         
         # اختبار اتصال Frappe Press
-        print("Getting frappe sites", flush=True)
         sites = trial_manager.frappe_manager.get_all_sites()
-        print(f"Sites got: {len(sites)}", flush=True)
         
         cursor.close()
         conn.close()
-        print("Connection closed, success", flush=True)
         
         return jsonify({
             'success': True,
@@ -297,8 +263,6 @@ def health_check():
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
-        print(f"Health check exception: {str(e)}", flush=True)
-        logger.error(f"Health check failed: {str(e)}")
         return jsonify({
             'success': False,
             'message': '❌ نظام قاعدة البيانات غير متصل',
@@ -310,77 +274,37 @@ def health_check():
 def create_trial():
     """إنشاء حساب تجريبي"""
     start_time = time.time()
-
-    # التأكد من أن الطلب يحتوي على JSON
-    if not request.is_json:
-        logger.error("❌ Request is not JSON")
-        return jsonify({
-            'success': False,
-            'message': 'طلب غير صحيح - يجب أن يكون JSON',
-            'error': 'invalid_content_type'
-        }), 400
-
     try:
-        data = request.get_json()
-        if not data:
-            logger.error("❌ No JSON data received")
-            return jsonify({
-                'success': False,
-                'message': 'لم يتم استلام بيانات صحيحة',
-                'error': 'no_data'
-            }), 400
-
-        logger.info(f"📥 استلام طلب إنشاء حساب لـ: {data.get('company_name', 'غير محدد')}")
-
-        # التحقق من الحقول المطلوبة
-        required_fields = ['company_name', 'full_name', 'email']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        if missing_fields:
-            return jsonify({
-                'success': False,
-                'message': f'الحقول المطلوبة مفقودة: {", ".join(missing_fields)}',
-                'error': 'missing_fields'
-            }), 400
-
+        data = request.json
+        logger.info(f"📥 استلام طلب إنشاء حساب لـ: {data.get('company_name')}")
+        
         success, result = trial_manager.create_trial_account(data)
-
+        
         execution_time = time.time() - start_time
         logger.info(f"⏱️ وقت تنفيذ الطلب: {execution_time:.2f} ثانية")
-
+        
         if success:
-            response_data = {
+            return jsonify({
                 'success': True,
                 'site_url': result,
                 'message': '🎉 تم إنشاء موقعك التجريبي بنجاح!',
-                'type': 'trial_account',
+                'type': 'frappe_press_site',
                 'execution_time': f"{execution_time:.2f} ثانية"
-            }
-            logger.info(f"✅ نجح إنشاء الحساب: {response_data}")
-            return jsonify(response_data)
+            })
         else:
-            error_response = {
+            return jsonify({
                 'success': False,
-                'message': str(result) if result else 'فشل في إنشاء الحساب التجريبي',
-                'type': 'creation_error',
+                'message': result,
+                'type': 'error',
                 'execution_time': f"{execution_time:.2f} ثانية"
-            }
-            logger.error(f"❌ فشل إنشاء الحساب: {error_response}")
-            return jsonify(error_response), 400
-
-    except json.JSONDecodeError as e:
-        logger.error(f"❌ JSON Decode Error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': 'بيانات JSON غير صحيحة',
-            'error': 'json_decode_error'
-        }), 400
+            }), 400
+            
     except Exception as e:
         execution_time = time.time() - start_time
-        logger.error(f"❌ خطأ في API: {str(e)}", exc_info=True)
+        logger.error(f"❌ خطأ في API: {str(e)}")
         return jsonify({
             'success': False,
             'message': f'حدث خطأ في الخادم: {str(e)}',
-            'error': 'server_error',
             'execution_time': f"{execution_time:.2f} ثانية"
         }), 500
 
@@ -580,219 +504,24 @@ def test_nginx_config():
 def debug_frappe_connection():
     """تصحيح اتصال Frappe"""
     try:
-        # اختبار الاتصال المباشر إلى frappe-app-1 من docker-compose
-        frappe_app_ip = '172.25.3.10'  # frappe-light-app-1
-        frappe_app_port = 8000
-
-        test_url = f"http://{frappe_app_ip}:{frappe_app_port}/api/method/version"
-
+        # اختبار الاتصال المباشر
+        test_url = "http://172.20.0.20:8000/api/method/version"
+        
         response = requests.get(test_url, timeout=10)
-
+        
         return jsonify({
             'success': True,
-            'frappe_host': f"{frappe_app_ip}:{frappe_app_port}",
             'frappe_status': 'connected' if response.status_code == 200 else 'failed',
             'status_code': response.status_code,
             'content_type': response.headers.get('content-type', 'unknown'),
             'response_preview': response.text[:200] if response.text else 'empty'
         })
-
+        
     except Exception as e:
         return jsonify({
             'success': False,
             'frappe_status': 'error',
-            'frappe_host': '172.25.3.10:8000',
             'error': str(e)
-        }), 500
-
-@app.route('/api/book-demo', methods=['POST'])
-def book_demo():
-    """حجز عرض تجريبي"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({
-                'success': False,
-                'message': 'بيانات الطلب مفقودة'
-            }), 400
-
-        # التحقق من الحقول المطلوبة
-        required_fields = ['company_name', 'full_name', 'email', 'phone']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        if missing_fields:
-            return jsonify({
-                'success': False,
-                'message': f'الحقول المطلوبة مفقودة: {", ".join(missing_fields)}'
-            }), 400
-
-        # حفظ بيانات طلب العرض في قاعدة البيانات
-        logger.info(f"📞 طلب عرض تجريبي من: {data['company_name']} - {data['email']}")
-
-        # إنشاء سجل في جدول demo_requests (إذا لم يكن موجوداً)
-        cursor = get_db_connection().cursor()
-        try:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS demo_requests (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    company_name VARCHAR(255) NOT NULL,
-                    contact_name VARCHAR(255) NOT NULL,
-                    email VARCHAR(255) NOT NULL,
-                    phone VARCHAR(50) NOT NULL,
-                    employee_count VARCHAR(50),
-                    industry VARCHAR(255),
-                    interested_apps TEXT,
-                    notes TEXT,
-                    source VARCHAR(100) DEFAULT 'website',
-                    status ENUM('pending', 'contacted', 'completed', 'cancelled') DEFAULT 'pending',
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    INDEX idx_status (status),
-                    INDEX idx_created_at (created_at),
-                    INDEX idx_email (email)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """)
-
-            cursor.execute("""
-                INSERT INTO demo_requests
-                (company_name, contact_name, email, phone, employee_count, industry, interested_apps, notes, source)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                data['company_name'],
-                data['full_name'],
-                data['email'],
-                data['phone'],
-                data.get('employee_count', ''),
-                data.get('industry', ''),
-                json.dumps(data.get('interested_apps', [])),
-                data.get('notes', ''),
-                data.get('source', 'book_demo_form')
-            ))
-
-            demo_id = cursor.lastrowid
-            get_db_connection().commit()
-
-            # محاكاة إرسال بريد إلكتروني للإشعار
-            logger.info(f"📧 تم حفظ طلب العرض التجريبي رقم {demo_id}")
-
-            return jsonify({
-                'success': True,
-                'message': 'تم إرسال طلب العرض التجريبي بنجاح. سيتصل بك فريقنا قريباً.',
-                'demo_request_id': demo_id
-            })
-
-        finally:
-            cursor.close()
-
-    except mysql.connector.IntegrityError as e:
-        logger.error(f"❌ خطأ في حفظ طلب العرض: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': 'البريد الإلكتروني مسجل مسبقاً'
-        }), 400
-    except Exception as e:
-        logger.error(f"❌ خطأ في معالجة طلب العرض: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'حدث خطأ في الخادم: {str(e)}'
-        }), 500
-
-@app.route('/api/statistics', methods=['GET'])
-def get_statistics():
-    """الحصول على إحصائيات النظام"""
-    try:
-        cursor = get_db_connection().cursor(dictionary=True)
-        try:
-            # عدد الحسابات التجريبية النشطة
-            cursor.execute("""
-                SELECT COUNT(*) as count FROM trial_customers
-                WHERE status = 'active' AND expires_at > NOW()
-            """)
-            trial_users = cursor.fetchone()['count']
-
-            # عدد المواقع التي تم إنشاؤها
-            cursor.execute("""
-                SELECT COUNT(*) as count FROM trial_customers
-                WHERE frappe_site_created = 1
-            """)
-            sites_created = cursor.fetchone()['count']
-
-            # عدد طلبات العروض التجريبية
-            cursor.execute("""
-                SELECT COUNT(*) as count FROM demo_requests
-                WHERE status = 'pending'
-            """)
-            demo_requests = cursor.fetchone()['count']
-
-            return jsonify({
-                'success': True,
-                'data': {
-                    'trial_users': trial_users,
-                    'sites_created': sites_created,
-                    'demo_requests': demo_requests
-                }
-            })
-
-        finally:
-            cursor.close()
-
-    except Exception as e:
-        logger.error(f"❌ خطأ في جلب الإحصائيات: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'حدث خطأ في الخادم: {str(e)}'
-        }), 500
-
-@app.route('/api/apps', methods=['GET'])
-def get_available_apps():
-    """الحصول على قائمة التطبيقات المتاحة"""
-    try:
-        apps = [
-            {
-                'id': 'erpnext',
-                'name': 'ERPNext',
-                'description': 'نظام تخطيط الموارد المتكامل - إدارة الحسابات والمخزون والمبيعات',
-                'icon': '📊',
-                'features': ['المحاسبة', 'المخزون', 'المبيعات', 'المشتريات']
-            },
-            {
-                'id': 'hrms',
-                'name': 'HRMS',
-                'description': 'نظام إدارة الموارد البشرية - إدارة الموظفين والرواتب والحضور',
-                'icon': '👥',
-                'features': ['إدارة الموظفين', 'الرواتب', 'الحضور', 'التقييمات']
-            },
-            {
-                'id': 'crm',
-                'name': 'CRM',
-                'description': 'نظام إدارة علاقات العملاء - متابعة العملاء والمبيعات والتسويق',
-                'icon': '🤝',
-                'features': ['إدارة العملاء', 'المبيعات', 'التسويق', 'الدعم']
-            },
-            {
-                'id': 'lms',
-                'name': 'LMS',
-                'description': 'نظام إدارة التعلم - إنشاء وإدارة الدورات التدريبية',
-                'icon': '🎓',
-                'features': ['الدورات', 'الاختبارات', 'الشهادات', 'التقارير']
-            },
-            {
-                'id': 'website',
-                'name': 'Website',
-                'description': 'منشئ مواقع الويب - إنشاء موقع شركتك بسهولة',
-                'icon': '🌐',
-                'features': ['منشئ المواقع', 'التصميم', 'المحتوى', 'SEO']
-            }
-        ]
-
-        return jsonify({
-            'success': True,
-            'apps': apps
-        })
-
-    except Exception as e:
-        logger.error(f"❌ خطأ في جلب التطبيقات: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'حدث خطأ في الخادم: {str(e)}'
         }), 500
 
 if __name__ == '__main__':

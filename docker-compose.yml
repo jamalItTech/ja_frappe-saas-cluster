@@ -1,220 +1,176 @@
-
+version: '3.8'
 
 services:
-  # Primary Database - MariaDB 10.6
-  frappe-db:
+  # 🗄️ طبقة قاعدة البيانات
+  db-primary:
     image: mariadb:10.6
-    container_name: frappe-light-db
-    restart: unless-stopped
+    container_name: db-primary
     networks:
-      frappe-light-net:
-        ipv4_address: 172.25.0.10
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.10
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_TCP_PORT: ${DB_PORT}
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: "frappe"
     volumes:
-      - ./volumes/light-db:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "bash", "-c", "${DB_HEALTH_CHECK_CMD}"]
-      interval: ${HEALTH_CHECK_INTERVAL}
-      timeout: ${HEALTH_CHECK_TIMEOUT}
-      retries: ${HEALTH_CHECK_RETRIES}
-    command: >
-      --character-set-server=utf8mb4
-      --collation-server=utf8mb4_unicode_ci
-      --innodb-buffer-pool-size=1G
-      --innodb-log-file-size=128M
-      --max-connections=100
-      --query-cache-size=64M
-    deploy:
-      resources:
-        limits:
-          memory: ${DB_MEMORY_LIMIT}
-          cpus: ${DB_CPU_LIMIT}
-        reservations:
-          memory: 1g
-          cpus: '0.5'
+      - db_primary_data:/var/lib/mysql
+    restart: unless-stopped
 
-  # Redis Cache
-  frappe-redis:
-    image: redis:7-alpine
-    container_name: frappe-light-redis
-    restart: unless-stopped
+  # 🎯 طبقة الخدمات
+  redis-server:
+    image: redis:alpine
+    container_name: redis-server
     networks:
-      frappe-light-net:
-        ipv4_address: 172.25.0.11
-    command: >
-      redis-server 
-      --requirepass ${REDIS_PASSWORD}
-      --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
-      --appendonly yes
-    volumes:
-      - ./volumes/light-redis:/data
-    healthcheck:
-      test: ["CMD", "sh", "-c", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    deploy:
-      resources:
-        limits:
-          memory: ${REDIS_MEMORY_LIMIT}
-          cpus: ${REDIS_CPU_LIMIT}
-        reservations:
-          memory: 256m
-          cpus: '0.1'  # Frappe App Server
-  # Frappe App Server
-  frappe-app-1:
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.30
+    restart: unless-stopped
+
+  # 🔷 خوادم التطبيقات
+  app-server-1:
     image: frappe/bench:latest
-    container_name: frappe-light-app-1
-    restart: unless-stopped
-    depends_on:
-      frappe-db:
-        condition: service_healthy
-      frappe-redis:
-        condition: service_healthy
+    container_name: app-server-1
     networks:
-      frappe-light-net:
-        ipv4_address: 172.25.3.10
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.20
     ports:
-      - "${FRAPPE_APP_PORT_EXTERNAL}:8000"
-    environment:
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_USER: ${MYSQL_USER}
-      DB_PASSWORD: ${MYSQL_PASSWORD}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      - "8000:8000"
+    user: root
     command: >
       bash -c "
-        echo 'Starting Frappe...' &&
-        
-        # تنظيف إذا كان bench تالفاً
-        cd /home/frappe &&
-        if [ -d 'frappe-bench' ] && [ ! -f 'frappe-bench/apps.txt' ]; then
-          echo 'Removing corrupted bench...' &&
-          rm -rf frappe-bench;
-        fi &&
-        
-        # إذا لم يكن bench موجوداً، قم بتهيئته
-        if [ ! -d 'frappe-bench' ]; then
-          echo 'Initializing new bench...' &&
-          bench init --skip-redis-config-generation --frappe-branch version-15 frappe-bench;
-        fi &&
-        
-        # الانتقال إلى المسار الصحيح
-        cd /home/frappe/frappe-bench &&
-        echo 'In bench directory:' && pwd && ls -la &&
-        
-        # إنشاء موقع إذا لم يكن موجوداً
-        if [ ! -d 'sites/site1.local' ]; then
-          echo 'Creating site1.local...' &&
-          bench new-site site1.local \
-            --mariadb-root-password $$MYSQL_ROOT_PASSWORD \
-            --admin-password $$ADMIN_PASSWORD \
-            --force;
-        fi &&
-        
-        echo 'Starting Frappe server...' &&
-        bench use site1.local &&
-        bench start
+      export PATH=/home/frappe/.local/bin:$PATH
+      cd /home/frappe/production
+      bench start --port 8000
       "
-
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/method/version"]
-      interval: ${HEALTH_CHECK_INTERVAL}
-      timeout: ${HEALTH_CHECK_TIMEOUT}
-      retries: ${HEALTH_CHECK_RETRIES}
-    deploy:
-      resources:
-        limits:
-          memory: ${FRAPPE_MEMORY_LIMIT}
-          cpus: ${FRAPPE_CPU_LIMIT}
-        reservations:
-          memory: 1g
-          cpus: '0.5'
-  # SaaS Database
-  saas-database:
-    image: mariadb:10.6
-    container_name: saas-light-database
-    restart: unless-stopped
-    networks:
-      frappe-light-net:
-        ipv4_address: 172.25.0.100
-    environment:
-      MYSQL_ROOT_PASSWORD: ${SAAS_DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${SAAS_DB_NAME}
-      MYSQL_USER: ${SAAS_DB_USER}
-      MYSQL_PASSWORD: ${SAAS_DB_PASSWORD}
     volumes:
-      - ./volumes/light-saas-db:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "bash", "-c", "mysqladmin ping -h localhost -u root -p${SAAS_DB_ROOT_PASSWORD}"]
-      interval: ${HEALTH_CHECK_INTERVAL}
-      timeout: ${HEALTH_CHECK_TIMEOUT}
-      retries: ${HEALTH_CHECK_RETRIES}
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-          cpus: '0.3'
-        reservations:
-          memory: 256m
-          cpus: '0.2'
+      - app1_data:/home/frappe/production
+    restart: unless-stopped
+    depends_on:
+      - db-primary
+      - redis-server
 
-  # Proxy Server
+  app-server-2:
+    image: frappe/bench:latest
+    container_name: app-server-2
+    networks:
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.21
+    ports:
+      - "8001:8000"
+    user: root
+    command: >
+      bash -c "
+      export PATH=/home/frappe/.local/bin:$PATH
+      cd /home/frappe/production
+      bench start --port 8000
+      "
+    volumes:
+      - app2_data:/home/frappe/production
+    restart: unless-stopped
+    depends_on:
+      - db-primary
+      - redis-server
+
+  # 🌐 بروكسي سيرفر (Load Balancer)
   proxy-server:
     image: nginx:alpine
-    container_name: frappe-light-proxy
-    restart: unless-stopped
+    container_name: proxy-server
     networks:
-      frappe-light-net:
-        ipv4_address: 172.25.0.5
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.40
     ports:
-      - "8080:80"    # تغيير من 80 إلى 8080
-      - "8443:443"   # تغيير من 443 إلى 8443
+      - "80:80"
+      - "443:443"
     volumes:
-        - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-        - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+    restart: unless-stopped
     depends_on:
-      - frappe-app-1
-    healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 256m
-          cpus: '0.3'
-        reservations:
-          memory: 128m
-          cpus: '0.1'
+      - app-server-1
+      - app-server-2
+
+  # 📊 خادم المراقبة
+  monitor-server:
+    image: prom/prometheus:latest
+    container_name: monitor-server
+    networks:
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.50
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # 📈 واجهة المراقبة (Grafana)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-server
+    networks:
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.51
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    restart: unless-stopped
+    depends_on:
+      - monitor-server
+
+  # 📝 خادم السجلات
+  log-server:
+    image: elasticsearch:8.11.0
+    container_name: log-server
+    networks:
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.60
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+
+  # 🔍 واجهة السجلات (Kibana)
+  kibana:
+    image: kibana:8.11.0
+    container_name: kibana-server
+    networks:
+      frappe-cluster-net:
+        ipv4_address: 172.20.0.61
+    environment:
+      - ELASTICSEARCH_HOSTS=http://log-server:9200
+    ports:
+      - "5601:5601"
+    restart: unless-stopped
+    depends_on:
+      - log-server
+
 networks:
-  frappe-light-net:
+  frappe-cluster-net:
     driver: bridge
     ipam:
-      driver: default
       config:
-        - subnet: ${NETWORK_SUBNET}
-          gateway: ${NETWORK_GATEWAY}
+        - subnet: 172.20.0.0/16
 
 volumes:
-  light-db:
-    driver: local
-  light-redis:
-    driver: local
-  light-bench:
-    driver: local
-  light-saas-db:
-    driver: local
-  nginx_cache:
-    driver: local
+  db_primary_data:
+  app1_data:
+  app2_data:
+  prometheus_data:
+  grafana_data:
+  elasticsearch_data:
