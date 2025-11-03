@@ -1,0 +1,36 @@
+DocType,Role in Configuration Functional Component,Relationships,Notes
+Server,System of record for Actual Product Instances,Linked to Virtual Machine (1:n); Linked to Storage Plan (n:1),"Stores core attributes (Id, Name, Type, Status, IP) and lifecycle data"
+Server,Impact analysis,Tagged with Resource Tag (n:m); Emits to Log Server (n:1),Supports dependency graphs and change correlation
+Server,Service monitoring target,Monitored by Prometheus Alert Rule Cluster (1:n),Used for incident/event prioritization
+Server,Desired→Actual realization,Targeted by Release Group Server (n:m),Realization endpoint for deployments from Desired Product Instance
+Server,Actual Product Instance attribute holder,Has Create/Modified timestamps; Location,Holds key attributes required by 9.2.1.1
+Virtual Machine,Actual Product Instance,Hosted on Server (n:1); Uses Storage Plan (n:1),Represents realized compute node (workload)
+Virtual Machine,Incident/Event linkage,Linked to Incident (n:m); Linked to Webhook Event (n:m),For business impact of Incident/Event
+Virtual Machine,Service monitoring target,Monitored by Prometheus Alert Rule Cluster (1:n),Operational telemetry linkage
+Virtual Machine,Impact analysis,Tagged with Resource Tag (n:m),Participates in dependency mapping and blast-radius analysis
+Storage Plan,Configuration item (CI),Linked to Server (1:n); Linked to Virtual Machine (1:n),Defines storage class/tiers and capacity
+Disk/Volume,Configuration item (CI),Part of Server/VM (n:1),Concrete storage CI used in configuration model
+Site Domain,Runtime routing surface,Mapped to Server (n:m); Used by Site User (n:m),Represents DNS/domain bindings in production
+Site Domain,Actual↔Actual relationship,Domain depends on Server; Server provides service to Domain,Captures inter-instance dependencies
+Application Instance,Actual Product Instance (service layer),Depends on Server/VM (n:m); Uses Press Settings (n:1),Represents the running app/service realization
+Application Instance,Incident/Event linkage,Linked to Incident (n:m); Linked to Webhook Event (n:m),Trace business impact at service level
+Press Settings (Configuration Item),Configuration data for Actual Product Instance,Linked to Application Instance (1:n),Holds deploy-time/runtime parameters (part of CI model)
+Resource Tag,Impact analysis and dependency grouping,Tags Server/VM/Disk/Network (n:m),Enables queryable blast-radius/impact views
+Log Server,Operational telemetry repository,Receives logs from Server/VM (n:m),"Used to correlate changes, incidents, and events"
+Release Group,Desired→Actual linkage (plan),Has Deploy Candidate (1:n); Targets Release Group Server (1:n),Bridges Desired Product Instance to deployment targets
+Release Group Server,Desired→Actual linkage (target),Targets Server (n:m); Belongs to Release Group (n:1),Specifies which servers receive a release
+Deploy Candidate,Desired→Actual linkage (artifact),Belongs to Release Group (n:1); Deployed to Server/VM (n:m),Represents a version/build to be realized in production
+Incident,Business impact calculation,Linked to Server/VM/App Instance (n:m),Supports prioritization by affected instances and contracts
+Incident,System of record for disruptions,"References Prometheus Alerts, Events (n:m)",Feeds data to impact analysis
+Webhook Event,Event capture for impact,Linked to Server/VM/App Instance (n:m),Used to evaluate event impact on services
+Webhook Event,Change correlation,Correlates with Log Server entries (n:m),Assists in RCA and prioritization
+Prometheus Alert Rule Cluster,Service monitor,Monitors Server/VM/App Instance (1:n),Provides health signals and thresholds
+Agent Job,Service discovery / population,Runs against Server/VM (n:m),Populates/refreshes CMDB entries automatically
+Agent Step,Service discovery workflow,Belongs to Agent Job (n:1),Defines task units for discovery/collection
+Agent Type,Service discovery templates,Referenced by Agent Job (n:1),Defines discovery methods/protocols
+Site User,Operational association,Linked to Site Domain (n:m),Represents access/ownership context
+Backup/Snapshot,Lifecycle management,Belongs to Server/VM (n:1),Supports restore tests and lifecycle checkpoints
+Runbook (Proposed),Operational procedure linkage,Linked to Server/VM/App Instance (n:m),Provides step-by-step remediation; required by 9.2.1.1 relationship
+Service Contract (Proposed),Commercial/OLA linkage,Linked from Actual Product Instance (1:n),Supports measurement and prioritization by contract
+Problem (Proposed),Root cause record linkage,Linked to Actual Product Instance (n:m),Distinct from Incident per ITIL; supports trend and RCA
+Actual Product Instance (Composite),Data object (9.2.1.1),Composed of Server/VM/App Instance/Site Domain (n:m),"Must include Id, Name, Type, CI model, Create/Modified, Location"
