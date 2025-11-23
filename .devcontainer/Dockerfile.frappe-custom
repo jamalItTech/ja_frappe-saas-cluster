@@ -1,0 +1,15 @@
+FROM frappe/erpnext:version-15
+
+# تأكد أن كل التهيئة موجودة
+USER root
+RUN apt-get update && apt-get install -y sudo
+
+# تهيئة بيئة Frappe
+USER frappe
+WORKDIR /home/frappe/frappe-bench
+
+# تأكد من تهيئة bench
+RUN echo "✅ Custom Frappe image with full setup"
+
+# العودة للمستخدم الافتراضي
+USER frappe

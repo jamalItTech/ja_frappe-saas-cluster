@@ -1,0 +1,27 @@
+{
+    "name": "Frappe ERPNext",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "frappe-app",
+    "workspaceFolder": "/home/frappe/frappe-bench",
+    
+    "postCreateCommand": "bash /workspaces/.devcontainer/auto-start.sh",
+    "postStartCommand": "bash /workspaces/.devcontainer/auto-start.sh",
+    
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "wholroyd.jinja",
+                "ms-vscode.vscode-json"
+            ]
+        }
+    },
+    
+    "forwardPorts": [8000, 9000],
+    "portsAttributes": {
+        "8000": {
+            "label": "Frappe App",
+            "onAutoForward": "notify"
+        }
+    }
+}

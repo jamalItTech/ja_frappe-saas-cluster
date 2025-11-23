@@ -1,0 +1,270 @@
+redis-server --daemonize yes
+
+command: >
+      bash -c "
+        if [ ! -f /home/frappe/frappe-bench/sites/common_site_config.json ]; then
+          bench init frappe-bench --skip-assets --python $(which python) &&
+          cd frappe-bench &&
+          bench new-site erpnext.local --db-root-password=123456 --admin-password=admin &&
+          bench get-app erpnext &&
+          bench --site erpnext.local install-app erpnext &&
+          bench use erpnext.local &&
+          echo '✅ التهيئة اكتملت بنجاح!'
+        else
+          echo '✅ النظام مهيئ مسبقاً'
+        fi &&
+        echo '🚀 يمكنك الآن بدء الخدمة يدوياً باستخدام: bench start' &&
+        tail -f /dev/null
+#!/usr/bin/env python3
+import sys
+import os
+import frappe
+
+def setup_complete_cluster():
+    """إعداد الكلاستر الكامل مع جميع الخوادم"""
+    
+    bench_path = "/home/frappe/production"
+    sites_path = os.path.join(bench_path, "sites")
+    
+    sys.path.insert(0, bench_path)
+    os.chdir(sites_path)
+    
+    frappe.init(site="site1.local", sites_path=sites_path)
+    frappe.connect()
+    
+    print("🏗️ بدء إعداد الكلاستر الكامل production-cluster-ksa...")
+    
+    try:
+        # التحقق من وجود الكلاستر أو إنشائه
+        if not frappe.db.exists("Cluster", "production-cluster-ksa"):
+            print("📦 إنشاء الكلاستر الجديد...")
+            cluster = frappe.get_doc({
+                "doctype": "Cluster",
+                "name": "production-cluster-ksa",
+                "title": "KSA Production Cluster",
+                "description": "Production cluster for Saudi Arabia with full infrastructure",
+                "public": 1,
+                "default": 1,
+                "enabled": 1,
+                "ssh_user": "root",
+                "ssh_port": 22,
+                "docker_registry_url": "registry.frappe.cloud"
+            })
+            cluster.insert()
+            print("✅ تم إنشاء الكلاستر")
+        else:
+            cluster = frappe.get_doc("Cluster", "production-cluster-ksa")
+            print("✅ الكلاستر موجود مسبقاً")
+        
+        # قائمة جميع الخوادم المطلوبة
+        servers_config = [
+            # 🗄️ Database Server
+            {
+                "doctype": "Database Server",
+                "hostname": "db-primary",
+                "cluster": "production-cluster-ksa",
+                "ip": "172.20.0.10",
+                "private_ip": "172.20.0.10",
+                "mariadb_root_password": "123456",
+                "status": "Active"
+            },
+            # 🏢 Application Servers
+            {
+                "doctype": "Server",
+                "hostname": "app-server-1",
+                "cluster": "production-cluster-ksa",
+                "ip": "172.20.0.20",
+                "private_ip": "172.20.0.20",
+                "agent_password": "app123456",
+                "plan": "DP-04",
+                "status": "Active",
+                "server_type": "Application"
+            },
+            {
+                "doctype": "Server",
+                "hostname": "app-server-2", 
+                "cluster": "production-cluster-ksa",
+                "ip": "172.20.0.21",
+                "private_ip": "172.20.0.21",
+                "agent_password": "app123456",
+                "plan": "DP-04",
+                "status": "Active",
+                "server_type": "Application"
+            },
+            # 🎯 Cache Servers
+            {
+                "doctype": "Server",
+                "hostname": "redis-server",
+                "cluster": "production-cluster-ksa",
+                "ip": "172.20.0.30",
+                "private_ip": "172.20.0.30",
+                "agent_password": "redis123456",
+                "plan": "DP-02",
+                "status": "Active",
+                "server_type": "Cache"
+            },
+            # 🌐 Proxy Server
+            {
+                "doctype": "Proxy Server",
+                "hostname": "proxy-01",
+                "cluster": "production-cluster-ksa",
+                "ip": "172.20.0.40",
+                "private_ip": "172.20.0.40",
+                "agent_password": "proxy123456",
+                "status": "Active",
+                "is_primary": 1
+            },
+            # 📊 Monitor Server
+            {
+                "doctype": "Server", 
+                "hostname": "monitor-01",
+                "cluster": "production-cluster-ksa",
+                "ip": "172.20.0.50",
+                "private_ip": "172.20.0.50",
+                "agent_password": "monitor123456",
+                "plan": "DP-02",
+                "status": "Active",
+                "server_type": "Monitor"
+            },
+            # 📝 Log Server
+            {
+                "doctype": "Server",
+                "hostname": "log-01",
+                "cluster": "production-cluster-ksa",
+                "ip": "172.20.0.60",
+                "private_ip": "172.20.0.60",
+                "agent_password": "log123456",
+                "plan": "DP-02", 
+                "status": "Active",
+                "server_type": "Log"
+            }
+        ]
+        
+        added_servers = []
+        existing_servers = []
+        
+        for config in servers_config:
+            doctype = config["doctype"]
+            hostname = config["hostname"]
+            
+            # التحقق من وجود السيرفر
+            if frappe.db.exists(doctype, hostname):
+                print(f"⚠️ {hostname} ({doctype}) - موجود مسبقاً")
+                existing_servers.append(hostname)
+                continue
+            
+            try:
+                # إنشاء السيرفر
+                server = frappe.get_doc(config)
+                server.insert()
+                added_servers.append(f"{hostname} ({doctype})")
+                print(f"✅ {hostname} ({doctype}) - تم الإضافة")
+                
+            except Exception as e:
+                print(f"❌ {hostname} ({doctype}) - فشل الإضافة: {e}")
+        
+        frappe.db.commit()
+        
+        # عرض النتائج
+        print("\n🎉 تم الانتهاء من إعداد الكلاستر!")
+        print("=" * 60)
+        
+        if added_servers:
+            print(f"✅ تم إضافة {len(added_servers)} خادم جديد:")
+            for server in added_servers:
+                print(f"   📍 {server}")
+        
+        if existing_servers:
+            print(f"ℹ️  {len(existing_servers)} خادم موجود مسبقاً:")
+            for server in existing_servers:
+                print(f"   📍 {server}")
+        
+        # عرض الهيكل النهائي
+        print("\n🏢 الهيكل النهائي للكلاستر:")
+        print("=" * 60)
+        
+        # جلب جميع الخوادم حسب النوع
+        db_servers = frappe.get_all("Database Server", 
+            filters={"cluster": "production-cluster-ksa"},
+            fields=["hostname", "ip", "status"]
+        )
+        
+        app_servers = frappe.get_all("Server", 
+            filters={"cluster": "production-cluster-ksa", "server_type": "Application"},
+            fields=["hostname", "ip", "status"]
+        )
+        
+        cache_servers = frappe.get_all("Server",
+            filters={"cluster": "production-cluster-ksa", "server_type": "Cache"}, 
+            fields=["hostname", "ip", "status"]
+        )
+        
+        proxy_servers = frappe.get_all("Proxy Server",
+            filters={"cluster": "production-cluster-ksa"},
+            fields=["hostname", "ip", "status", "is_primary"]
+        )
+        
+        monitor_servers = frappe.get_all("Server",
+            filters={"cluster": "production-cluster-ksa", "server_type": "Monitor"},
+            fields=["hostname", "ip", "status"]
+        )
+        
+        log_servers = frappe.get_all("Server",
+            filters={"cluster": "production-cluster-ksa", "server_type": "Log"},
+            fields=["hostname", "ip", "status"]
+        )
+        
+        print(f"🗄️ Database Servers ({len(db_servers)})")
+        for server in db_servers:
+            status_icon = "✅" if server.status == "Active" else "⚠️"
+            print(f"   └── {server.hostname} ({server.ip}) {status_icon} {server.status}")
+        
+        print(f"🏢 Application Servers ({len(app_servers)})")
+        for i, server in enumerate(app_servers):
+            status_icon = "✅" if server.status == "Active" else "⚠️"
+            prefix = "   ├──" if i < len(app_servers) - 1 else "   └──"
+            print(f"{prefix} {server.hostname} ({server.ip}) {status_icon} {server.status}")
+        
+        print(f"🎯 Cache Servers ({len(cache_servers)})")
+        for server in cache_servers:
+            status_icon = "✅" if server.status == "Active" else "⚠️"
+            print(f"   └── {server.hostname} ({server.ip}) {status_icon} {server.status}")
+        
+        print(f"🌐 Proxy Servers ({len(proxy_servers)})")
+        for server in proxy_servers:
+            status_icon = "✅" if server.status == "Active" else "⚠️"
+            primary = "⭐ Primary" if server.is_primary else ""
+            print(f"   └── {server.hostname} ({server.ip}) {status_icon} {server.status} {primary}")
+        
+        print(f"📊 Monitor Servers ({len(monitor_servers)})")
+        for server in monitor_servers:
+            status_icon = "✅" if server.status == "Active" else "⚠️"
+            print(f"   └── {server.hostname} ({server.ip}) {status_icon} {server.status}")
+        
+        print(f"📝 Log Servers ({len(log_servers)})")
+        for server in log_servers:
+            status_icon = "✅" if server.status == "Active" else "⚠️"
+            print(f"   └── {server.hostname} ({server.ip}) {status_icon} {server.status}")
+        
+        # الإحصائيات النهائية
+        total_servers = (len(db_servers) + len(app_servers) + len(cache_servers) + 
+                        len(proxy_servers) + len(monitor_servers) + len(log_servers))
+        
+        print(f"\n📈 الإحصائيات النهائية:")
+        print(f"   🎯 إجمالي الخوادم: {total_servers}")
+        print(f"   🏷️  اسم الكلاستر: {cluster.name}")
+        print(f"   📝 الوصف: {cluster.description}")
+        print(f"   🌐 الحالة: {'🟢 مفعل' if cluster.enabled else '🔴 معطل'}")
+        print(f"   ⭐ افتراضي: {'نعم' if cluster.default else 'لا'}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ فشل إعداد الكلاستر: {e}")
+        frappe.db.rollback()
+        return False
+    finally:
+        frappe.destroy()
+
+if __name__ == "__main__":
+    setup_complete_cluster()

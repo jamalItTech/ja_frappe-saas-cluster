@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  frappe-app:
+    image: hub.ittech-ye.net/frappe/erpnext:version-15
+    container_name: frappe-coder-app
+    environment:
+      - MARIADB_HOST=db-primary
+      - REDIS_CACHE=redis-cache:6379
+      - REDIS_QUEUE=redis-queue:6379
+      - SOCKETIO=redis-socketio:6379
+      - SITE_NAME=erpnext.local
+      - DEV_SERVER=1
+    volumes:
+      # كل البيانات في /workspaces/ تبقى دائمة
+      - /workspaces/frappe-data/sites:/home/frappe/frappe-bench/sites
+      - /workspaces/frappe-data/apps:/home/frappe/frappe-bench/apps
+      - /workspaces/frappe-data/logs:/home/frappe/frappe-bench/logs
+      - /workspaces/frappe-data/config:/home/frappe/frappe-bench
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+    depends_on:
+      - db-primary
+      - redis-cache
+      - redis-queue
+      - redis-socketio
+    command: sleep infinity
+    user: frappe
+    restart: unless-stopped  # ⬅️ يعيد التشغيل تلقائياً
+
+  db-primary:
+    image: mariadb:10.6
+    container_name: frappe-coder-db
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: "frappe"
+      MYSQL_USER: "frappe"
+      MYSQL_PASSWORD: "frappe123"
+    volumes:
+      - /workspaces/frappe-data/mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p123456"]
+      timeout: 20s
+      retries: 10
+    restart: unless-stopped  # ⬅️ يعيد التشغيل تلقائياً
+
+  redis-cache:
+    image: redis:alpine
+    container_name: frappe-coder-redis-cache
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - /workspaces/frappe-data/redis/cache:/data
+    restart: unless-stopped
+
+  redis-queue:
+    image: redis:alpine
+    container_name: frappe-coder-redis-queue
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - /workspaces/frappe-data/redis/queue:/data
+    restart: unless-stopped
+
+  redis-socketio:
+    image: redis:alpine
+    container_name: frappe-coder-redis-socketio
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - /workspaces/frappe-data/redis/socketio:/data
+    restart: unless-stopped
